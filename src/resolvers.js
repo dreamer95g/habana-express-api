@@ -35,17 +35,41 @@ const requireSeller = (user) => {
 export const resolvers = {
   Query: {
     // PUBLIC
-    products: () => prisma.products.findMany({ 
-      where: { active: true },
-      include: { product_categories: { include: { category: true } }, sale_products: true, seller_products: true } 
-    }),
     
-    product: (_, { id_product }) => prisma.products.findUnique({ 
-      where: { id_product }, 
-      include: { product_categories: { include: { category: true } }, seller_products: true } 
-    }),
+    // 🔒 AHORA PROTEGIDO: Solo usuarios logueados pueden ver la lista
+    products: (_, __, { user }) => {
+      requireAuth(user); // <--- ESTO ES LO QUE BLOQUEA A LOS NO LOGUEADOS
+      
+      return prisma.products.findMany({ 
+        where: { active: true }, // Seguimos mostrando solo los activos
+        include: { 
+          product_categories: { include: { category: true } }, 
+          sale_products: true, 
+          seller_products: true 
+        } 
+      });
+    },
     
-    categories: () => prisma.categories.findMany({ include: { product_categories: true } }),
+    // 🔒 AHORA PROTEGIDO: Ver detalle de un producto
+    product: (_, { id_product }, { user }) => {
+      requireAuth(user); // <--- BLOQUEO
+      
+      return prisma.products.findUnique({ 
+        where: { id_product }, 
+        include: { 
+          product_categories: { include: { category: true } }, 
+          seller_products: true 
+        } 
+      });
+    },
+    
+    // 🔒 AHORA PROTEGIDO: Ver categorías
+    categories: (_, __, { user }) => {
+      requireAuth(user); // <--- BLOQUEO
+      return prisma.categories.findMany({ include: { product_categories: true } });
+    },
+
+
 
     // ADMIN ONLY
     users: (_, __, { user }) => {
@@ -226,11 +250,32 @@ export const resolvers = {
     },
 
     createReturn: async (_, args, { user }) => {
-       requireSeller(user);
+
+       //requireSeller(user);
+      //   requireStorekeeper(user);
+      //  const { saleId, productId, quantity, loss_usd, notes } = args;
+      //  const ret = await prisma.returns.create({ data: { id_sale: saleId, id_product: productId, quantity, loss_usd, notes }, include: { product: true, sale: true } });
+      //  await prisma.products.update({ where: { id_product: productId }, data: { stock: { increment: quantity } } });
+      //  return ret;
+//requireSeller(user);
+        requireStorekeeper(user); 
+       
        const { saleId, productId, quantity, loss_usd, notes } = args;
-       const ret = await prisma.returns.create({ data: { id_sale: saleId, id_product: productId, quantity, loss_usd, notes }, include: { product: true, sale: true } });
-       await prisma.products.update({ where: { id_product: productId }, data: { stock: { increment: quantity } } });
+       
+       // 1. Crear el registro de devolución
+       const ret = await prisma.returns.create({
+         data: { id_sale: saleId, id_product: productId, quantity, loss_usd, notes },
+         include: { product: true, sale: true }
+       });
+
+       // 2. Regresar el stock al Almacén Global (Responsabilidad del Storekeeper)
+       await prisma.products.update({
+         where: { id_product: productId },
+         data: { stock: { increment: quantity } }
+       });
+
        return ret;
+
     },
   },
 

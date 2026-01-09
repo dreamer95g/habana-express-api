@@ -1,49 +1,174 @@
 import { PrismaClient } from '@prisma/client';
+import { hashPassword, comparePassword, createToken } from './auth.js';
 
 const prisma = new PrismaClient();
 
+/* 🛡️ --- SECURITY GUARDS (MIDDLEWARES) --- 🛡️ */
+
+const requireAuth = (user) => {
+  if (!user) throw new Error('⛔ Authorization required. Please log in.');
+};
+
+const requireAdmin = (user) => {
+  requireAuth(user);
+  if (user.role !== 'admin') {
+    throw new Error('⛔ Access Denied: Admin role required.');
+  }
+};
+
+const requireStorekeeper = (user) => {
+  requireAuth(user);
+  if (user.role !== 'admin' && user.role !== 'storekeeper') {
+    throw new Error('⛔ Access Denied: Storekeeper or Admin role required.');
+  }
+};
+
+const requireSeller = (user) => {
+  requireAuth(user);
+  if (user.role !== 'admin' && user.role !== 'seller') {
+    throw new Error('⛔ Access Denied: Seller or Admin role required.');
+  }
+};
+
+/* 🚀 --- RESOLVERS --- 🚀 */
+
 export const resolvers = {
   Query: {
-    systemConfiguration: () => prisma.system_configuration.findMany(),
-    users: () => prisma.users.findMany({ include: { seller_products: true, sales: true } }),
-    user: (_, { id_user }) => prisma.users.findUnique({ where: { id_user }, include: { seller_products: true, sales: true } }),
-    products: () => prisma.products.findMany({
-      include: { product_categories: { include: { category: true } }, sale_products: true, returns: true, seller_products: true },
+    // PUBLIC
+    products: () => prisma.products.findMany({ 
+      where: { active: true },
+      include: { product_categories: { include: { category: true } }, sale_products: true, seller_products: true } 
     }),
-    product: (_, { id_product }) => prisma.products.findUnique({
-      where: { id_product },
-      include: { product_categories: { include: { category: true } }, sale_products: true, returns: true, seller_products: true },
+    
+    product: (_, { id_product }) => prisma.products.findUnique({ 
+      where: { id_product }, 
+      include: { product_categories: { include: { category: true } }, seller_products: true } 
     }),
+    
     categories: () => prisma.categories.findMany({ include: { product_categories: true } }),
-    sales: () => prisma.sales.findMany({
-      include: { sale_products: { include: { product: true } }, returns: true, seller: true },
-    }),
-    sale: (_, { id_sale }) => prisma.sales.findUnique({
-      where: { id_sale },
-      include: { sale_products: { include: { product: true } }, returns: { include: { product: true } }, seller: true },
-    }),
-    returns: () => prisma.returns.findMany({ include: { product: true, sale: true } }),
-    shipments: () => prisma.shipments.findMany(),
-    sellerProducts: (_, { sellerId }) => prisma.seller_products.findMany({
-      where: { id_seller: sellerId },
-      include: { seller: true, product: true },
-    }),
+
+    // ADMIN ONLY
+    users: (_, __, { user }) => {
+      requireAdmin(user);
+      return prisma.users.findMany({ include: { seller_products: true, sales: true } });
+    },
+    
+    user: (_, { id_user }, { user }) => {
+      requireAdmin(user);
+      return prisma.users.findUnique({ where: { id_user }, include: { seller_products: true, sales: true } });
+    },
+
+    // ADMIN & STOREKEEPER
+    sales: (_, __, { user }) => {
+      requireStorekeeper(user); 
+      return prisma.sales.findMany({ include: { sale_products: { include: { product: true } }, seller: true } });
+    },
+    
+    returns: (_, __, { user }) => {
+      requireStorekeeper(user);
+      return prisma.returns.findMany({ include: { product: true, sale: true } });
+    },
+    
+    shipments: (_, __, { user }) => {
+      requireStorekeeper(user);
+      return prisma.shipments.findMany();
+    },
+
+    // AUTH REQUIRED
+    systemConfiguration: (_, __, { user }) => {
+      requireAuth(user); 
+      return prisma.system_configuration.findMany();
+    },
+    
+    sale: (_, { id_sale }, { user }) => {
+      requireAuth(user); 
+      return prisma.sales.findUnique({ where: { id_sale }, include: { sale_products: { include: { product: true } }, seller: true } });
+    },
+
+    // LOGIC FOR SELLERS (View own stock)
+    sellerProducts: (_, { sellerId }, { user }) => {
+      requireAuth(user);
+      
+      let targetId = sellerId;
+      // If I am a seller, I can ONLY see my own products
+      if (user.role === 'seller') {
+        targetId = user.id_user; 
+      }
+
+      return prisma.seller_products.findMany({
+        where: { id_seller: targetId },
+        include: { seller: true, product: true },
+      });
+    },
   },
 
   Mutation: {
-    createUser: (_, { input }) => prisma.users.create({ data: input }),
-    createProduct: (_, { input }) => prisma.products.create({ data: input }),
-
-    // --- CAMBIO REGLA DE NEGOCIO: ASIGNACIÓN ---
-    assignProductToSeller: async (_, { sellerId, productId, quantity }) => {
-      // 1. ELIMINADO: Ya NO restamos del stock global aquí.
-      // El producto sigue siendo de la empresa, solo cambia de manos (custodia).
+    // PUBLIC
+    login: async (_, { email, password }) => {
+      const user = await prisma.users.findUnique({ where: { email } });
+      if (!user) throw new Error('User not found');
       
-      // 2. Asignar al vendedor (crear o sumar a su inventario personal)
-      const existing = await prisma.seller_products.findFirst({
-        where: { id_seller: sellerId, id_product: productId }
-      });
+      const valid = await comparePassword(password, user.password_hash);
+      if (!valid) throw new Error('Invalid password');
+      
+      if (!user.active) throw new Error('User account is deactivated');
+      
+      const token = createToken(user);
+      return { token, user };
+    },
 
+    // ADMIN ONLY
+    createUser: async (_, { input }, { user }) => {
+      requireAdmin(user);
+      const hashedPassword = await hashPassword(input.password_hash);
+      return prisma.users.create({
+        data: { ...input, password_hash: hashedPassword },
+      });
+    },
+
+    updateSystemConfiguration: async (_, { id_config, input }, { user }) => {
+      requireAdmin(user);
+      return prisma.system_configuration.update({ where: { id_config }, data: input });
+    },
+    
+    createShipment: (_, args, { user }) => { 
+      requireAdmin(user); 
+      return prisma.shipments.create({ data: args }); 
+    },
+
+    // STOREKEEPER & ADMIN (Inventory Management)
+    createCategory: (_, { name }, { user }) => {
+       requireStorekeeper(user);
+       return prisma.categories.create({ data: { name } });
+    },
+
+    createProduct: (_, { input }, { user }) => {
+      requireStorekeeper(user);
+      return prisma.products.create({ data: input });
+    },
+
+    updateProduct: (_, { id_product, input }, { user }) => {
+      requireStorekeeper(user);
+      return prisma.products.update({
+        where: { id_product },
+        data: input
+      });
+    },
+
+    deleteProduct: async (_, { id_product }, { user }) => {
+      requireStorekeeper(user);
+      try {
+        return await prisma.products.delete({ where: { id_product } });
+      } catch (error) {
+        throw new Error("Cannot delete: Product has associated sales or assignments. Deactivate it instead.");
+      }
+    },
+
+    assignProductToSeller: async (_, { sellerId, productId, quantity }, { user }) => {
+      requireStorekeeper(user);
+      
+      const existing = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
+      
       if (existing) {
         return prisma.seller_products.update({
           where: { id_seller_product: existing.id_seller_product },
@@ -58,44 +183,33 @@ export const resolvers = {
       }
     },
 
-    // --- CAMBIO REGLA DE NEGOCIO: VENTA ---
-    createSale: async (
-      _,
-      { sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes, items }
-    ) => {
-      // 1. Crear la venta
+    // SELLERS & ADMIN
+    createSale: async (_, { sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes, items }, { user }) => {
+      requireSeller(user);
+      
+      if (user.role === 'seller' && user.id_user !== sellerId) {
+        throw new Error('⛔ Action Forbidden: You cannot register sales for another seller.');
+      }
+
       const sale = await prisma.sales.create({
-        data: {
-          id_seller: sellerId,
-          exchange_rate,
-          total_cup,
-          buyer_phone,
-          payment_method,
-          notes,
-        },
+        data: { id_seller: sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes },
       });
 
-      // 2. Procesar productos
       for (const { productId, quantity } of items) {
-        // A. Registrar item de venta
         await prisma.sale_products.create({
           data: { id_sale: sale.id_sale, id_product: productId, quantity },
         });
 
-        // B. SIEMPRE restar del Stock Global (Products) porque el item se vendió y salió de la empresa
         await prisma.products.update({
           where: { id_product: productId },
           data: { stock: { decrement: quantity } },
         });
 
-        // C. Si el vendedor tenía stock asignado, restarlo de SU inventario también
         const assigned = await prisma.seller_products.findFirst({
           where: { id_seller: sellerId, id_product: productId },
         });
 
         if (assigned) {
-          // Si tiene asignación, restamos. 
-          // (Nota: Podrías validar aquí si assigned.quantity >= quantity para evitar negativos)
           await prisma.seller_products.update({
             where: { id_seller_product: assigned.id_seller_product },
             data: { quantity: { decrement: quantity } },
@@ -103,47 +217,25 @@ export const resolvers = {
         }
       }
 
+      // Telegram Logic would go here...
+
       return prisma.sales.findUnique({
         where: { id_sale: sale.id_sale },
-        include: { 
-          sale_products: { include: { product: true } }, 
-          seller: true 
-        },
+        include: { sale_products: { include: { product: true } }, seller: true },
       });
     },
 
-    createReturn: async (_, { saleId, productId, quantity, loss_usd, notes }) => {
-      const ret = await prisma.returns.create({
-        data: { id_sale: saleId, id_product: productId, quantity, loss_usd, notes },
-        include: { product: true, sale: true },
-      });
-
-      // Devolver stock al almacén global
-      await prisma.products.update({
-        where: { id_product: productId },
-        data: { stock: { increment: quantity } },
-      });
-
-      return ret;
+    createReturn: async (_, args, { user }) => {
+       requireSeller(user);
+       const { saleId, productId, quantity, loss_usd, notes } = args;
+       const ret = await prisma.returns.create({ data: { id_sale: saleId, id_product: productId, quantity, loss_usd, notes }, include: { product: true, sale: true } });
+       await prisma.products.update({ where: { id_product: productId }, data: { stock: { increment: quantity } } });
+       return ret;
     },
-
-    createShipment: (_, args) => prisma.shipments.create({ data: args }),
-    updateSystemConfiguration: async (_, { id_config, input }) => {
-      return prisma.system_configuration.update({ where: { id_config }, data: input });
-    },
-    createCategory: (_, { name }) => prisma.categories.create({ data: { name } }),
   },
 
   // Field Resolvers
-  SaleProduct: {
-    product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }),
-  },
-  Return: {
-    product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }),
-    sale: (parent) => parent.sale || prisma.sales.findUnique({ where: { id_sale: parent.id_sale } }),
-  },
-  SellerProduct: {
-    product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }),
-    seller: (parent) => parent.seller || prisma.users.findUnique({ where: { id_user: parent.id_seller } }),
-  }
+  SaleProduct: { product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }) },
+  Return: { product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }), sale: (parent) => parent.sale || prisma.sales.findUnique({ where: { id_sale: parent.id_sale } }) },
+  SellerProduct: { product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }), seller: (parent) => parent.seller || prisma.users.findUnique({ where: { id_user: parent.id_seller } }) }
 };

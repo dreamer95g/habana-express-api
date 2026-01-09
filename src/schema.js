@@ -43,6 +43,11 @@ export const typeDefs = gql`
     seller_products: [SellerProduct]
   }
 
+  type AuthPayload {
+    token: String!
+    user: User!
+  }
+
   type Category {
     id_category: Int!
     name: String!
@@ -149,6 +154,19 @@ export const typeDefs = gql`
     active: Boolean
   }
 
+  input UpdateProductInput {
+  name: String
+  description: String
+  purchase_price: Float
+  sale_price: Float
+  stock: Int
+  sku: String
+  supplier_name: String
+  photo_url: String
+  warranty: Boolean
+  active: Boolean
+}
+
   input UpdateSystemConfigurationInput {
     company_name: String
     logo_url: String
@@ -180,8 +198,11 @@ export const typeDefs = gql`
   }
 
   type Mutation {
+     login(email: String!, password: String!): AuthPayload
     createUser(input: CreateUserInput!): User
     createProduct(input: CreateProductInput!): Product
+    updateProduct(id_product: Int!, input: UpdateProductInput!): Product
+    deleteProduct(id_product: Int!): Product
     assignProductToSeller(sellerId: Int!, productId: Int!, quantity: Int!): SellerProduct
     createSale(
       sellerId: Int!,

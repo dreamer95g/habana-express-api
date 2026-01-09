@@ -1,17 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// -- MODELOS --
 
 model system_configuration {
   id_config                    Int      @id @default(autoincrement())
   company_name                 String
   logo_url                     String?
   description                  String?
-  seller_commission_percentage Float
+  seller_commission_percentage Decimal  @db.Decimal(5, 2)
   weekly_report_day            Int?
-  weekly_report_time           DateTime?
+  weekly_report_time           DateTime? @db.Time
   monthly_report_day           Int?
-  monthly_report_time          DateTime?
+  monthly_report_time          DateTime? @db.Time
   annual_report_day            Int?
-  annual_report_time           DateTime?
-  default_exchange_rate        Float
+  annual_report_time           DateTime? @db.Time
+  default_exchange_rate        Decimal   @db.Decimal(10, 4)
   telegram_bot_token           String
   created_at                   DateTime @default(now())
   active                       Boolean  @default(true)
@@ -42,8 +52,8 @@ model products {
   id_product      Int                @id @default(autoincrement())
   name            String
   description     String?
-  purchase_price  Float
-  sale_price      Float
+  purchase_price  Decimal            @db.Decimal(10, 2)
+  sale_price      Decimal            @db.Decimal(10, 2)
   stock           Int                @default(0)
   sku             String?
   supplier_name   String?
@@ -78,8 +88,8 @@ model product_categories {
 model sales {
   id_sale       Int      @id @default(autoincrement())
   sale_date     DateTime @default(now())
-  exchange_rate Float
-  total_cup     Float
+  exchange_rate Decimal  @db.Decimal(10, 4)
+  total_cup     Decimal  @db.Decimal(12, 2)
   buyer_phone   String
   notes         String?
   payment_method PaymentMethod
@@ -111,7 +121,7 @@ model returns {
   id_product  Int
   quantity    Int
   return_date DateTime @default(now())
-  loss_usd    Float
+  loss_usd    Decimal  @db.Decimal(12, 2)
   notes       String?
 
   sale    sales    @relation(fields: [id_sale], references: [id_sale])
@@ -121,10 +131,10 @@ model returns {
 model shipments {
   id_shipment       Int      @id @default(autoincrement())
   agency_name       String
-  shipment_date     DateTime
-  shipping_cost_usd Float
-  customs_fee_cup   Float
-  exchange_rate     Float
+  shipment_date     DateTime @db.Date
+  shipping_cost_usd Decimal  @db.Decimal(12, 2)
+  customs_fee_cup   Decimal  @db.Decimal(12, 2)
+  exchange_rate     Decimal  @db.Decimal(10, 4)
   notes             String?
 }
 
@@ -137,15 +147,4 @@ model seller_products {
 
   seller  users    @relation(fields: [id_seller], references: [id_user])
   product products @relation(fields: [id_product], references: [id_product])
-}
-
-
-
-generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
-}
-
-datasource db {
-  provider = "mysql"
 }

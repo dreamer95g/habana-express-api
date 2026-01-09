@@ -5,28 +5,21 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "dev": "node src/index.js",              
-    "prisma:generate": "prisma generate",    
-    "prisma:migrate": "prisma migrate dev", 
-    "prisma:reset": "prisma migrate reset"   
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/dreamer95g/habana-express-api.git"
-  },
-  "keywords": [],
-  "author": "Gabriel",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/dreamer95g/habana-express-api/issues"
-  },
-  "homepage": "https://github.com/dreamer95g/habana-express-api#readme",
   "dependencies": {
-    "@prisma/client": "^7.2.0",
+    "@prisma/client": "^5.10.0",
     "apollo-server-express": "^3.13.0",
-    "dotenv": "^17.2.3",
-    "express": "^4.22.1",
-    "graphql": "^16.12.0",
-    "prisma": "^7.2.0"
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "graphql": "^16.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3",
+    "prisma": "^5.10.0"
   }
 }

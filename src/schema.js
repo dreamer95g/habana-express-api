@@ -50,6 +50,10 @@ export const typeDefs = gql`
     product_categories: [ProductCategory]
   }
 
+  type Mutation {
+    createCategory(name: String!): Category 
+  }
+
   type Product {
     id_product: Int!
     name: String!

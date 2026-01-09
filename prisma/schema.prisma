@@ -1,0 +1,151 @@
+
+model system_configuration {
+  id_config                    Int      @id @default(autoincrement())
+  company_name                 String
+  logo_url                     String?
+  description                  String?
+  seller_commission_percentage Float
+  weekly_report_day            Int?
+  weekly_report_time           DateTime?
+  monthly_report_day           Int?
+  monthly_report_time          DateTime?
+  annual_report_day            Int?
+  annual_report_time           DateTime?
+  default_exchange_rate        Float
+  telegram_bot_token           String
+  created_at                   DateTime @default(now())
+  active                       Boolean  @default(true)
+}
+
+model users {
+  id_user         Int              @id @default(autoincrement())
+  name            String
+  email           String?          @unique
+  photo_url       String?
+  password_hash   String
+  telegram_chat_id String?
+  role            Role
+  created_at      DateTime         @default(now())
+  active          Boolean          @default(true)
+
+  sales           sales[]
+  seller_products seller_products[]
+}
+
+enum Role {
+  admin
+  seller
+  storekeeper
+}
+
+model products {
+  id_product      Int                @id @default(autoincrement())
+  name            String
+  description     String?
+  purchase_price  Float
+  sale_price      Float
+  stock           Int                @default(0)
+  sku             String?
+  supplier_name   String?
+  date_added      DateTime           @default(now())
+  active          Boolean            @default(true)
+  photo_url       String?
+  warranty        Boolean            @default(false)
+
+  product_categories product_categories[]
+  sale_products      sale_products[]
+  returns            returns[]
+  seller_products    seller_products[]
+}
+
+model categories {
+  id_category Int      @id @default(autoincrement())
+  name        String
+  active      Boolean  @default(true)
+
+  product_categories product_categories[]
+}
+
+model product_categories {
+  id_product_category Int @id @default(autoincrement())
+  id_product          Int
+  id_category         Int
+
+  product   products   @relation(fields: [id_product], references: [id_product])
+  category  categories @relation(fields: [id_category], references: [id_category])
+}
+
+model sales {
+  id_sale       Int      @id @default(autoincrement())
+  sale_date     DateTime @default(now())
+  exchange_rate Float
+  total_cup     Float
+  buyer_phone   String
+  notes         String?
+  payment_method PaymentMethod
+  id_seller     Int
+
+  seller        users     @relation(fields: [id_seller], references: [id_user])
+  sale_products sale_products[]
+  returns       returns[]
+}
+
+enum PaymentMethod {
+  cash
+  transfer
+}
+
+model sale_products {
+  id_sale_product Int @id @default(autoincrement())
+  id_sale         Int
+  id_product      Int
+  quantity        Int
+
+  sale    sales    @relation(fields: [id_sale], references: [id_sale])
+  product products @relation(fields: [id_product], references: [id_product])
+}
+
+model returns {
+  id_return   Int      @id @default(autoincrement())
+  id_sale     Int
+  id_product  Int
+  quantity    Int
+  return_date DateTime @default(now())
+  loss_usd    Float
+  notes       String?
+
+  sale    sales    @relation(fields: [id_sale], references: [id_sale])
+  product products @relation(fields: [id_product], references: [id_product])
+}
+
+model shipments {
+  id_shipment       Int      @id @default(autoincrement())
+  agency_name       String
+  shipment_date     DateTime
+  shipping_cost_usd Float
+  customs_fee_cup   Float
+  exchange_rate     Float
+  notes             String?
+}
+
+model seller_products {
+  id_seller_product Int      @id @default(autoincrement())
+  id_seller         Int
+  id_product        Int
+  quantity          Int      @default(0)
+  assigned_at       DateTime @default(now())
+
+  seller  users    @relation(fields: [id_seller], references: [id_user])
+  product products @relation(fields: [id_product], references: [id_product])
+}
+
+
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}

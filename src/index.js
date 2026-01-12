@@ -3,8 +3,9 @@ import { ApolloServer } from "apollo-server-express";
 import { typeDefs } from "./schema.js";
 import { resolvers } from "./resolvers.js";
 import { getUserFromToken } from "./auth.js";
+import { initTelegramBot } from "./telegram.js"; // ✨ IMPORT DEL BOT
 import dotenv from 'dotenv';
-import multer from 'multer'; // 1. Importamos Multer
+import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -48,7 +49,6 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ storage, fileFilter });
 
 // 3. Hacer pública la carpeta uploads
-// Esto permite que http://localhost:4000/uploads/foto.jpg sea accesible
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // 4. Endpoint REST para subir archivos
@@ -58,12 +58,10 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: 'No file was uploaded.' });
     }
 
-    // Construimos la URL pública
     const protocol = req.protocol;
     const host = req.get('host');
     const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
 
-    // Devolvemos la URL al frontend/usuario
     res.status(200).json({ 
       message: 'Image uploaded successfully.', 
       url: fileUrl 
@@ -75,6 +73,13 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 });
 
 async function startServer() {
+  // ✨ INICIAR EL BOT DE TELEGRAM
+  try {
+    await initTelegramBot();
+  } catch (error) {
+    console.error("⚠️ Failed to start Telegram Bot:", error.message);
+  }
+
   const server = new ApolloServer({
     typeDefs,
     resolvers,
@@ -90,7 +95,7 @@ async function startServer() {
 
   app.listen({ port: process.env.PORT || 4000 }, () => {
     console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`);
-    console.log(`📂 “Upload endpoint ready at http://localhost:4000/api/upload`);
+    console.log(`📂 Upload endpoint ready at http://localhost:4000/api/upload`);
   });
 }
 

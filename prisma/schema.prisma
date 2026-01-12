@@ -7,112 +7,102 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// -- MODELOS --
-
 model system_configuration {
-  id_config                    Int      @id @default(autoincrement())
+  id_config                    Int       @id @default(autoincrement())
   company_name                 String
+  company_phone                String?
+  company_email                String?
   logo_url                     String?
   description                  String?
-  seller_commission_percentage Decimal  @db.Decimal(5, 2)
-  weekly_report_day            Int?
-  weekly_report_time           DateTime? @db.Time
+  seller_commission_percentage Decimal   @db.Decimal(5, 2)
   monthly_report_day           Int?
-  monthly_report_time          DateTime? @db.Time
+  monthly_report_time          DateTime? @db.Time(0)
   annual_report_day            Int?
-  annual_report_time           DateTime? @db.Time
+  annual_report_time           DateTime? @db.Time(0)
   default_exchange_rate        Decimal   @db.Decimal(10, 4)
   telegram_bot_token           String
-  created_at                   DateTime @default(now())
-  active                       Boolean  @default(true)
+  created_at                   DateTime  @default(now())
+  active                       Boolean   @default(true)
 }
 
 model users {
-  id_user         Int              @id @default(autoincrement())
-  name            String
-  email           String?          @unique
-  photo_url       String?
-  password_hash   String
+  id_user          Int               @id @default(autoincrement())
+  name             String
+  phone            String            @unique
+  email            String?
+  photo_url        String?
+  password_hash    String
   telegram_chat_id String?
-  role            Role
-  created_at      DateTime         @default(now())
-  active          Boolean          @default(true)
-
-  sales           sales[]
-  seller_products seller_products[]
-}
-
-enum Role {
-  admin
-  seller
-  storekeeper
+  role             Role
+  created_at       DateTime          @default(now())
+  active           Boolean           @default(true)
+  sales            sales[]
+  seller_products  seller_products[]
 }
 
 model products {
-  id_product      Int                @id @default(autoincrement())
-  name            String
-  description     String?
-  purchase_price  Decimal            @db.Decimal(10, 2)
-  sale_price      Decimal            @db.Decimal(10, 2)
-  stock           Int                @default(0)
-  sku             String?
-  supplier_name   String?
-  date_added      DateTime           @default(now())
-  active          Boolean            @default(true)
-  photo_url       String?
-  warranty        Boolean            @default(false)
-
+  id_product         Int                  @id @default(autoincrement())
+  name               String
+  description        String?
+  purchase_price     Decimal              @db.Decimal(10, 2)
+  sale_price         Decimal              @db.Decimal(10, 2)
+  stock              Int                  @default(0)
+  sku                String?
+  supplier_name      String?
+  date_added         DateTime             @default(now())
+  active             Boolean              @default(true)
+  photo_url          String?
+  warranty           Boolean              @default(false)
   product_categories product_categories[]
-  sale_products      sale_products[]
   returns            returns[]
+  sale_products      sale_products[]
   seller_products    seller_products[]
 }
 
 model categories {
-  id_category Int      @id @default(autoincrement())
-  name        String
-  active      Boolean  @default(true)
-
+  id_category        Int                  @id @default(autoincrement())
+  name               String
+  active             Boolean              @default(true)
   product_categories product_categories[]
 }
 
 model product_categories {
-  id_product_category Int @id @default(autoincrement())
+  id_product_category Int        @id @default(autoincrement())
   id_product          Int
   id_category         Int
+  category            categories @relation(fields: [id_category], references: [id_category])
+  product             products   @relation(fields: [id_product], references: [id_product])
 
-  product   products   @relation(fields: [id_product], references: [id_product])
-  category  categories @relation(fields: [id_category], references: [id_category])
+  @@index([id_category], map: "product_categories_id_category_fkey")
+  @@index([id_product], map: "product_categories_id_product_fkey")
 }
 
 model sales {
-  id_sale       Int      @id @default(autoincrement())
-  sale_date     DateTime @default(now())
-  exchange_rate Decimal  @db.Decimal(10, 4)
-  total_cup     Decimal  @db.Decimal(12, 2)
-  buyer_phone   String
-  notes         String?
+  id_sale        Int             @id @default(autoincrement())
+  sale_date      DateTime        @default(now())
+  exchange_rate  Decimal         @db.Decimal(10, 4)
+  total_cup      Decimal         @db.Decimal(12, 2)
+  buyer_phone    String
+  notes          String?
   payment_method PaymentMethod
-  id_seller     Int
+  id_seller      Int
+  returns        returns[]
+  sale_products  sale_products[]
+  seller         users           @relation(fields: [id_seller], references: [id_user])
 
-  seller        users     @relation(fields: [id_seller], references: [id_user])
-  sale_products sale_products[]
-  returns       returns[]
-}
-
-enum PaymentMethod {
-  cash
-  transfer
+  @@index([id_seller], map: "sales_id_seller_fkey")
 }
 
 model sale_products {
-  id_sale_product Int @id @default(autoincrement())
+  id_sale_product Int      @id @default(autoincrement())
   id_sale         Int
   id_product      Int
   quantity        Int
+  product         products @relation(fields: [id_product], references: [id_product])
+  sale            sales    @relation(fields: [id_sale], references: [id_sale])
 
-  sale    sales    @relation(fields: [id_sale], references: [id_sale])
-  product products @relation(fields: [id_product], references: [id_product])
+  @@index([id_product], map: "sale_products_id_product_fkey")
+  @@index([id_sale], map: "sale_products_id_sale_fkey")
 }
 
 model returns {
@@ -122,20 +112,23 @@ model returns {
   quantity    Int
   return_date DateTime @default(now())
   loss_usd    Decimal  @db.Decimal(12, 2)
-  notes       String?
+  reason      String?
+  product     products @relation(fields: [id_product], references: [id_product])
+  sale        sales    @relation(fields: [id_sale], references: [id_sale])
 
-  sale    sales    @relation(fields: [id_sale], references: [id_sale])
-  product products @relation(fields: [id_product], references: [id_product])
+  @@index([id_product], map: "returns_id_product_fkey")
+  @@index([id_sale], map: "returns_id_sale_fkey")
 }
 
 model shipments {
-  id_shipment       Int      @id @default(autoincrement())
-  agency_name       String
-  shipment_date     DateTime @db.Date
-  shipping_cost_usd Decimal  @db.Decimal(12, 2)
-  customs_fee_cup   Decimal  @db.Decimal(12, 2)
-  exchange_rate     Decimal  @db.Decimal(10, 4)
-  notes             String?
+  id_shipment          Int      @id @default(autoincrement())
+  agency_name          String
+  shipment_date        DateTime @db.Date
+  shipping_cost_usd    Decimal  @db.Decimal(12, 2)
+  customs_fee_cup      Decimal  @db.Decimal(12, 2)
+  merchandise_cost_usd Decimal  @db.Decimal(12, 2)
+  exchange_rate        Decimal  @db.Decimal(10, 4)
+  notes                String?
 }
 
 model seller_products {
@@ -144,7 +137,20 @@ model seller_products {
   id_product        Int
   quantity          Int      @default(0)
   assigned_at       DateTime @default(now())
+  product           products @relation(fields: [id_product], references: [id_product])
+  seller            users    @relation(fields: [id_seller], references: [id_user])
 
-  seller  users    @relation(fields: [id_seller], references: [id_user])
-  product products @relation(fields: [id_product], references: [id_product])
+  @@index([id_product], map: "seller_products_id_product_fkey")
+  @@index([id_seller], map: "seller_products_id_seller_fkey")
+}
+
+enum Role {
+  admin
+  seller
+  storekeeper
+}
+
+enum PaymentMethod {
+  cash
+  transfer
 }

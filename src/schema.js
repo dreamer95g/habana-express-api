@@ -15,11 +15,12 @@ export const typeDefs = gql`
   type SystemConfiguration {
     id_config: Int!
     company_name: String!
+    company_phone: String
+    company_email: String
     logo_url: String
     description: String
     seller_commission_percentage: Float!
-    weekly_report_day: Int
-    weekly_report_time: String
+    # ✂️ Weekly Eliminado
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
@@ -33,6 +34,7 @@ export const typeDefs = gql`
   type User {
     id_user: Int!
     name: String!
+    phone: String!
     email: String
     photo_url: String
     telegram_chat_id: String
@@ -53,10 +55,6 @@ export const typeDefs = gql`
     name: String!
     active: Boolean
     product_categories: [ProductCategory]
-  }
-
-  type Mutation {
-    createCategory(name: String!): Category 
   }
 
   type Product {
@@ -109,7 +107,7 @@ export const typeDefs = gql`
     quantity: Int!
     return_date: String
     loss_usd: Float!
-    notes: String
+    reason: String # ✨ Renombrado
     product: Product!
     sale: Sale!
   }
@@ -119,6 +117,7 @@ export const typeDefs = gql`
     agency_name: String!
     shipment_date: String!
     shipping_cost_usd: Float!
+    merchandise_cost_usd: Float! 
     customs_fee_cup: Float!
     exchange_rate: Float!
     notes: String
@@ -132,8 +131,34 @@ export const typeDefs = gql`
     product: Product!
   }
 
+  # --- REPORT TYPES ---
+  
+  type MonthlyReport {
+    month: Int!
+    year: Int!
+    income: Float!
+    expenses: Float!
+    netProfit: Float!
+  }
+
+  type AnnualReport {
+    year: Int!
+    totalNetProfit: Float!
+    breakdown: [MonthlyBreakdown]
+  }
+
+  type MonthlyBreakdown {
+    month: Int!
+    investment: Float!      
+    profit: Float!          
+    roiPercentage: Float!   
+  }
+
+  # --- INPUTS ---
+
   input CreateUserInput {
     name: String!
+    phone: String!
     email: String
     photo_url: String
     password_hash: String!
@@ -155,25 +180,26 @@ export const typeDefs = gql`
   }
 
   input UpdateProductInput {
-  name: String
-  description: String
-  purchase_price: Float
-  sale_price: Float
-  stock: Int
-  sku: String
-  supplier_name: String
-  photo_url: String
-  warranty: Boolean
-  active: Boolean
-}
+    name: String
+    description: String
+    purchase_price: Float
+    sale_price: Float
+    stock: Int
+    sku: String
+    supplier_name: String
+    photo_url: String
+    warranty: Boolean
+    active: Boolean
+  }
 
   input UpdateSystemConfigurationInput {
     company_name: String
+    company_phone: String
+    company_email: String
     logo_url: String
     description: String
     seller_commission_percentage: Float
-    weekly_report_day: Int
-    weekly_report_time: String
+    # ✂️ Weekly Eliminado
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
@@ -182,6 +208,13 @@ export const typeDefs = gql`
     telegram_bot_token: String
     active: Boolean
   }
+
+  input SaleItemInput {
+    productId: Int!
+    quantity: Int!
+  }
+
+  # --- QUERY & MUTATION ---
 
   type Query {
     systemConfiguration: [SystemConfiguration]
@@ -195,15 +228,20 @@ export const typeDefs = gql`
     returns: [Return]
     shipments: [Shipment]
     sellerProducts(sellerId: Int!): [SellerProduct]
+    monthlyReport: MonthlyReport
+    annualReport: AnnualReport
   }
 
   type Mutation {
-     login(email: String!, password: String!): AuthPayload
+    login(phone: String!, password: String!): AuthPayload
+    
     createUser(input: CreateUserInput!): User
+    createCategory(name: String!): Category 
     createProduct(input: CreateProductInput!): Product
     updateProduct(id_product: Int!, input: UpdateProductInput!): Product
     deleteProduct(id_product: Int!): Product
     assignProductToSeller(sellerId: Int!, productId: Int!, quantity: Int!): SellerProduct
+    
     createSale(
       sellerId: Int!,
       exchange_rate: Float!,
@@ -213,20 +251,20 @@ export const typeDefs = gql`
       notes: String,
       items: [SaleItemInput!]!
     ): Sale
-    createReturn(saleId: Int!, productId: Int!, quantity: Int!, loss_usd: Float!, notes: String): Return
+    
+    # ✨ Cambiado notes por reason
+    createReturn(saleId: Int!, productId: Int!, quantity: Int!, loss_usd: Float!, reason: String): Return
+    
     createShipment(
       agency_name: String!,
       shipment_date: String!,
       shipping_cost_usd: Float!,
+      merchandise_cost_usd: Float!,
       customs_fee_cup: Float!,
       exchange_rate: Float!,
       notes: String
     ): Shipment
+    
     updateSystemConfiguration(id_config: Int!, input: UpdateSystemConfigurationInput!): SystemConfiguration
-  }
-
-  input SaleItemInput {
-    productId: Int!
-    quantity: Int!
   }
 `;

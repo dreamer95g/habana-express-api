@@ -6,27 +6,42 @@ import { notifySale, notifyReturn, notifyStockDepletion } from './telegram.js';
 const prisma = new PrismaClient();
 
 /* 🛡️ --- SECURITY GUARDS --- 🛡️ */
+
 const requireAuth = (user) => {
   if (!user) throw new Error('⛔ Authorization required.');
 };
+
+// 1. Admin Only
 const requireAdmin = (user) => {
   requireAuth(user);
-  if (user.role !== 'admin') throw new Error('⛔ Access Denied: Admin role required.');
+  if (user.role !== 'admin') {
+    throw new Error('⛔ Access Denied: Admin role required.');
+  }
 };
+
+// 2. Storekeeper or Admin (Admin is allowed)
 const requireStorekeeper = (user) => {
   requireAuth(user);
-  if (user.role !== 'admin' && user.role !== 'storekeeper') throw new Error('⛔ Access Denied: Storekeeper required.');
+  if (user.role === 'admin') return; // ✅ Admin Bypass
+  if (user.role !== 'storekeeper') {
+    throw new Error('⛔ Access Denied: Storekeeper role required.');
+  }
 };
+
+// 3. Seller or Admin (Admin is allowed)
 const requireSeller = (user) => {
   requireAuth(user);
-  if (user.role !== 'admin' && user.role !== 'seller') throw new Error('⛔ Access Denied: Seller required.');
+  if (user.role === 'admin') return; // ✅ Admin Bypass
+  if (user.role !== 'seller') {
+    throw new Error('⛔ Access Denied: Seller role required.');
+  }
 };
 
 /* 🚀 --- RESOLVERS --- 🚀 */
 
 export const resolvers = {
   Query: {
-    // Users
+    // --- USERS ---
     users: (_, __, { user }) => {
       requireAdmin(user);
       return prisma.users.findMany({ include: { seller_products: true, sales: true } });
@@ -36,9 +51,10 @@ export const resolvers = {
       return prisma.users.findUnique({ where: { id_user }, include: { seller_products: true, sales: true } });
     },
 
-    // Products
+    // --- PRODUCTS ---
     products: (_, __, { user }) => {
       requireAuth(user);
+      // Todos los usuarios autenticados pueden ver productos activos
       return prisma.products.findMany({ 
         where: { active: true }, 
         include: { 
@@ -59,41 +75,44 @@ export const resolvers = {
       });
     },
 
-    // Categories
+    // --- CATEGORIES ---
     categories: (_, __, { user }) => {
       requireAuth(user);
       return prisma.categories.findMany({ include: { product_categories: true } });
     },
 
-    // Sales & Returns
+    // --- SALES & RETURNS ---
     sales: (_, __, { user }) => {
-      requireStorekeeper(user); 
+      requireStorekeeper(user); // Admin también accede aquí por el Bypass
       return prisma.sales.findMany({ include: { sale_products: { include: { product: true } }, seller: true } });
     },
     sale: (_, { id_sale }, { user }) => {
       requireAuth(user); 
+      // Permitimos acceso general autenticado, el frontend debe filtrar si es necesario
       return prisma.sales.findUnique({ where: { id_sale }, include: { sale_products: { include: { product: true } }, seller: true } });
     },
     returns: (_, __, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       return prisma.returns.findMany({ include: { product: true, sale: true } });
     },
 
-    // Logistics & Inventory
+    // --- LOGISTICS & INVENTORY ---
     shipments: (_, __, { user }) => {
       requireStorekeeper(user);
       return prisma.shipments.findMany();
     },
     sellerProducts: (_, { sellerId }, { user }) => {
       requireAuth(user);
-      let targetId = user.role === 'seller' ? user.id_user : sellerId;
+      // Lógica: Si soy Admin/Storekeeper uso el ID solicitado. Si soy Seller, forzamos mi propio ID.
+      let targetId = (user.role === 'admin' || user.role === 'storekeeper') ? sellerId : user.id_user;
+      
       return prisma.seller_products.findMany({
         where: { id_seller: targetId },
         include: { seller: true, product: true },
       });
     },
 
-    // Config & Reports
+    // --- CONFIG & REPORTS ---
     systemConfiguration: (_, __, { user }) => {
       requireAuth(user); 
       return prisma.system_configuration.findMany();
@@ -107,13 +126,13 @@ export const resolvers = {
       return await getAnnualReport();
     },
     topSellers: async (_, { period }, { user }) => {
-      requireAuth(user);
+      requireAuth(user); // Admin y Vendedores pueden ver el ranking
       return await calculateTopSellers(period);
     },
   },
 
   Mutation: {
-    // Auth
+    // --- AUTH ---
     login: async (_, { phone, password }) => {
       const user = await prisma.users.findUnique({ where: { phone } });
       if (!user) throw new Error('User not found');
@@ -132,20 +151,20 @@ export const resolvers = {
       return prisma.users.create({ data: { ...input, password_hash: hashedPassword } });
     },
 
-    // Config
+    // --- CONFIGURATION ---
     updateSystemConfiguration: async (_, { id_config, input }, { user }) => {
       requireAdmin(user);
       return prisma.system_configuration.update({ where: { id_config }, data: input });
     },
 
-    // Products Management
+    // --- PRODUCTS MANAGEMENT ---
     createCategory: (_, { name }, { user }) => {
        requireStorekeeper(user);
        return prisma.categories.create({ data: { name } });
     },
 
     createProduct: (_, { input }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       
       const { categoryIds, ...productData } = input;
       
@@ -157,6 +176,7 @@ export const resolvers = {
          finalSku = `HEX-${year}-${randomSuffix}`;
       }
 
+      // Lógica: Si entra stock inicial > 0, se activa automáticamente
       const isActive = productData.stock > 0 ? true : (productData.active ?? false);
 
       return prisma.products.create({ 
@@ -179,11 +199,11 @@ export const resolvers = {
     },
 
     updateProduct: async (_, { id_product, input }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       
       const { categoryIds, ...dataToUpdate } = input;
 
-      // Reactive Stock Logic
+      // Lógica Reactiva de Stock
       if (dataToUpdate.stock !== undefined) {
         if (dataToUpdate.stock > 0) {
           dataToUpdate.active = true;
@@ -192,14 +212,14 @@ export const resolvers = {
         }
       }
 
-      // Update with relation handling
+      // Actualización con manejo de relaciones
       const prismaUpdateArgs = {
         where: { id_product },
         data: {
             ...dataToUpdate,
             ...(categoryIds && {
                 product_categories: {
-                    deleteMany: {},
+                    deleteMany: {}, // Borramos relaciones anteriores
                     create: categoryIds.map(id => ({
                         category: { connect: { id_category: id } }
                     }))
@@ -215,7 +235,7 @@ export const resolvers = {
     },
 
     deleteProduct: async (_, { id_product }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       try {
         return await prisma.products.delete({ where: { id_product } });
       } catch (error) {
@@ -224,7 +244,8 @@ export const resolvers = {
     },
 
     assignProductToSeller: async (_, { sellerId, productId, quantity }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
+      // Verificamos si ya existe asignación
       const existing = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
       
       if (existing) {
@@ -241,12 +262,18 @@ export const resolvers = {
       }
     },
 
-    // Sales Logic
+    // --- SALES LOGIC ---
     createSale: async (_, { sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes, items }, { user }) => {
-      requireSeller(user);
-      if (user.role === 'seller' && user.id_user !== sellerId) throw new Error('Forbidden: Cannot sell for another user.');
+      requireSeller(user); // Pasa Admin y Seller
 
-      // 1. Stock Validation
+      // Validación de Identidad: El Admin puede vender por cualquiera. El Seller solo por sí mismo.
+      if (user.role !== 'admin') {
+        if (user.id_user !== sellerId) {
+           throw new Error('Forbidden: Cannot sell for another user.');
+        }
+      }
+
+      // 1. Validación de Stock Global
       for (const item of items) {
         const product = await prisma.products.findUnique({ where: { id_product: item.productId } });
         if (!product) throw new Error(`Product ID ${item.productId} not found`);
@@ -255,34 +282,34 @@ export const resolvers = {
         }
       }
 
-      // 2. Create Sale Header
+      // 2. Crear Cabecera de Venta
       const sale = await prisma.sales.create({
         data: { id_seller: sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes },
       });
 
-      // 3. Process Items & Update Inventory
+      // 3. Procesar Items y Actualizar Inventario
       for (const { productId, quantity } of items) {
         await prisma.sale_products.create({
           data: { id_sale: sale.id_sale, id_product: productId, quantity },
         });
 
-        // Decrement Global Stock
+        // Decrementar Stock Global
         const updatedProduct = await prisma.products.update({
           where: { id_product: productId },
           data: { stock: { decrement: quantity } },
         });
 
-        // ✨ Check for Depletion (Alert Admin)
+        // ✨ Verificar Agotamiento (Depletion)
         if (updatedProduct.stock <= 0) {
           await prisma.products.update({
             where: { id_product: productId },
             data: { active: false }
           });
-          // Async notification
+          // Notificación asíncrona a Telegram
           notifyStockDepletion(updatedProduct).catch(e => console.error(e));
         }
 
-        // Decrement Seller's Assigned Stock
+        // Decrementar Stock Asignado al Vendedor (Si existe)
         const assigned = await prisma.seller_products.findFirst({
           where: { id_seller: sellerId, id_product: productId },
         });
@@ -294,7 +321,7 @@ export const resolvers = {
         }
       }
 
-      // 4. Return Data & Notify
+      // 4. Retornar Datos y Notificar
       const saleResult = await prisma.sales.findUnique({
         where: { id_sale: sale.id_sale },
         include: { sale_products: { include: { product: true } }, seller: true },
@@ -309,29 +336,29 @@ export const resolvers = {
       return saleResult;
     },
 
-    // Returns Logic
+    // --- RETURNS LOGIC ---
     createReturn: async (_, args, { user }) => {
        requireStorekeeper(user); 
        const { saleId, productId, quantity, loss_usd, reason } = args;
        
-       // Record Return
+       // Registrar Devolución
        const ret = await prisma.returns.create({
          data: { id_sale: saleId, id_product: productId, quantity, loss_usd, reason },
          include: { product: true, sale: true }
        });
        
-       // Restore Stock
+       // Restaurar Stock Global
        const prod = await prisma.products.update({
          where: { id_product: productId },
          data: { stock: { increment: quantity } }
        });
 
-       // Reactivate if needed
+       // Reactivar producto si estaba oculto
        if (!prod.active && prod.stock > 0) {
          await prisma.products.update({ where: { id_product: productId }, data: { active: true } });
        }
 
-       // Notify
+       // Notificar a Telegram
        try {
          await notifyReturn(ret);
        } catch (e) {
@@ -341,14 +368,14 @@ export const resolvers = {
        return ret;
     },
 
-    // Logistics
+    // --- LOGISTICS ---
     createShipment: (_, args, { user }) => { 
-      requireAdmin(user); 
+      requireAdmin(user); // Solo Admin puede gestionar costos de importación
       return prisma.shipments.create({ data: args }); 
     },
   },
 
-  // Field Resolvers
+  // Field Resolvers (Resolución de campos anidados)
   SaleProduct: { 
     product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }) 
   },

@@ -10,18 +10,23 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import cors from 'cors'; // <--- IMPORTANTE
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Crear carpeta uploads si no existe
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
 const app = express();
+
+// 🔥 CORRECCIÓN: CORS DEBE IR AQUÍ, AL PRINCIPIO DE TODO
+app.use(cors()); 
 
 // --- MULTER CONFIG ---
 const storage = multer.diskStorage({
@@ -43,13 +48,16 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter });
 
+// Servir archivos estáticos
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
+// Endpoint de subida
 app.post('/api/upload', upload.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
     const protocol = req.protocol;
     const host = req.get('host');
+    // Construir URL completa
     const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     res.status(200).json({ message: 'Image uploaded.', url: fileUrl });
   } catch (error) {
@@ -82,7 +90,7 @@ async function startServer() {
     console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`);
     console.log(`📂 Upload endpoint ready at http://localhost:4000/api/upload`);
     
-    // 4. Init Telegram (Silent start, success log inside)
+    // 4. Init Telegram
     initTelegramBot();
   });
 }

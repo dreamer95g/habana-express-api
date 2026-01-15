@@ -4,8 +4,8 @@ setlocal enabledelayedexpansion
 :: ================================
 :: 🚀 CONFIGURACIÓN
 :: ================================
-set "TARGET_DIR=C:\Users\gabry\Desktop\Habana Express Store\test"
-set "OUTPUT_FILE=habana_express_store_code.txt"
+set "TARGET_DIR=C:\Users\gabry\Desktop\Habana Express Store\habana-express-api"
+set "OUTPUT_FILE=habana_express_api_code.txt"
 
 echo Borrando archivo anterior...
 del "%OUTPUT_FILE%" >nul 2>&1
@@ -27,13 +27,33 @@ for /r "%TARGET_DIR%" %%F in (*) do (
         set "skip=true"
     )
 
+    :: ❌ Ignorar carpeta generated
+    if /i not "!file:generated\=!"=="!file!" (
+        set "skip=true"
+    )
+
+    :: ❌ Ignorar carpeta .git
+    if /i not "!file:.git\=!"=="!file!" (
+        set "skip=true"
+    )
+    
+    :: ❌ Ignorar carpeta node_modules
+    if /i not "!file:node_modules\=!"=="!file!" (
+        set "skip=true"
+    )
+
     :: ❌ Ignorar archivos .bat
     if /i "!file:~-4!"==".bat" (
         set "skip=true"
     )
 
     :: ❌ Ignorar archivo .gitignore
-    if /i "!file:~-9!"==".gitignore" (
+    if /i "!file:~-10!"==".gitignore" (
+        set "skip=true"
+    )
+
+    :: ❌ Ignorar archivo package-lock.json (17 caracteres)
+    if /i "!file:~-17!"=="package-lock.json" (
         set "skip=true"
     )
 

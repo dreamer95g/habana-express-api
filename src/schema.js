@@ -20,11 +20,16 @@ export const typeDefs = gql`
     logo_url: String
     description: String
     seller_commission_percentage: Float!
-    # ✂️ Weekly Eliminado
+    
+    # --- REPORTES Y TIEMPOS ---
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
     annual_report_time: String
+    
+    # ✅ NUEVO CAMPO AGREGADO
+    exchange_rate_sync_time: String
+    
     default_exchange_rate: Float!
     telegram_bot_token: String!
     created_at: String
@@ -107,7 +112,7 @@ export const typeDefs = gql`
     quantity: Int!
     return_date: String
     loss_usd: Float!
-    reason: String # ✨ Renombrado
+    reason: String
     product: Product!
     sale: Sale!
   }
@@ -135,8 +140,8 @@ export const typeDefs = gql`
     id_user: Int!
     name: String!
     photo_url: String
-    total_sales_usd: Float! # Total vendido convertido a USD
-    items_sold: Int!        # Cantidad de productos vendidos
+    total_sales_usd: Float!
+    items_sold: Int!
   }
 
   # --- REPORT TYPES ---
@@ -209,11 +214,16 @@ export const typeDefs = gql`
     logo_url: String
     description: String
     seller_commission_percentage: Float
-    # ✂️ Weekly Eliminado
+    
+    # --- REPORTES Y TIEMPOS ---
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
     annual_report_time: String
+    
+    # ✅ NUEVO CAMPO AGREGADO EN INPUT TAMBIÉN
+    exchange_rate_sync_time: String
+    
     default_exchange_rate: Float
     telegram_bot_token: String
     active: Boolean
@@ -263,7 +273,6 @@ export const typeDefs = gql`
       items: [SaleItemInput!]!
     ): Sale
     
-    # ✨ Cambiado notes por reason
     createReturn(saleId: Int!, productId: Int!, quantity: Int!, loss_usd: Float!, reason: String): Return
     
     createShipment(

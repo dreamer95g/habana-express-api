@@ -194,11 +194,9 @@ export const notifySale = async (sale) => {
       // 3. Ganancia Operativa
       const grossMargin = totalSaleUSD - totalProductCostUSD - commissionPaid;
 
-      // 4. Diezmo (10% de lo operativo)
-      const tithe = grossMargin > 0 ? grossMargin * 0.10 : 0;
-
+      
       // 5. Ganancia Real
-      const realProfit = grossMargin - tithe;
+      const realProfit = grossMargin;
 
 
       // --- A. NOTIFICAR AL ADMIN ---

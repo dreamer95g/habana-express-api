@@ -53,23 +53,18 @@ const calculateProfitInPeriod = async (startDate, endDate) => {
   // Se calcula sobre el total de ventas brutas
   const totalCommissionsUSD = totalIncomeUSD * (commissionPct / 100);
 
-  // 7. --- CÁLCULO PREVIO (Para Diezmo) ---
+
   // Ganancia Operativa = Ingresos - (Inversión + Pérdidas + Comisiones)
   const operatingProfit = totalIncomeUSD - (totalInvestmentUSD + returnLossesUSD + totalCommissionsUSD);
 
-  // 8. --- DIEZMO (TITHE) ---
-  // Solo se diezma si hay ganancia positiva
-  const titheUSD = operatingProfit > 0 ? operatingProfit * 0.10 : 0;
-
-  // 9. --- GANANCIA NETA FINAL ---
-  const netProfit = operatingProfit - titheUSD;
+  
+  const netProfit = operatingProfit;
 
   return {
     income: totalIncomeUSD,
     investment: totalInvestmentUSD,
     returnLosses: returnLossesUSD,
     commissions: totalCommissionsUSD,
-    tithe: titheUSD,
     netProfit: netProfit
   };
 };

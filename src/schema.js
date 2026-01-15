@@ -131,6 +131,14 @@ export const typeDefs = gql`
     product: Product!
   }
 
+  type TopSeller {
+    id_user: Int!
+    name: String!
+    photo_url: String
+    total_sales_usd: Float! # Total vendido convertido a USD
+    items_sold: Int!        # Cantidad de productos vendidos
+  }
+
   # --- REPORT TYPES ---
   
   type MonthlyReport {
@@ -177,6 +185,7 @@ export const typeDefs = gql`
     photo_url: String
     warranty: Boolean
     active: Boolean
+    categoryIds: [Int] 
   }
 
   input UpdateProductInput {
@@ -190,6 +199,7 @@ export const typeDefs = gql`
     photo_url: String
     warranty: Boolean
     active: Boolean
+    categoryIds: [Int]
   }
 
   input UpdateSystemConfigurationInput {
@@ -230,6 +240,7 @@ export const typeDefs = gql`
     sellerProducts(sellerId: Int!): [SellerProduct]
     monthlyReport: MonthlyReport
     annualReport: AnnualReport
+    topSellers(period: String!): [TopSeller]
   }
 
   type Mutation {

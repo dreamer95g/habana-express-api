@@ -1,314 +1,501 @@
 import { Telegraf } from 'telegraf';
-import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { getMonthlyReport, getAnnualReport } from './services/finance.js';
 
 const prisma = new PrismaClient();
 let bot = null;
+let isBotRunning = false; 
 
-// --- 🛠️ HELPERS DE FORMATO ---
-
-const formatUSD = (amount) => {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+// --- 🛠️ FORMAT HELPERS ---
+const formatNumber = (amount) => {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0
+  }).format(amount);
 };
 
-const formatCUP = (amountUSD, exchangeRate) => {
-  const total = Number(amountUSD) * Number(exchangeRate);
-  return new Intl.NumberFormat('es-CU', { style: 'currency', currency: 'CUP' }).format(total);
+const safeReply = async (chatId, message) => {
+    if (!bot) return; 
+    try {
+        await bot.telegram.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+        console.error(`⚠️ Telegram Send Error (Chat: ${chatId}):`, error.message);
+    }
 };
 
-// Generador del Reporte Financiero (Mensual/Anual)
-const generateFinancialTextReport = (title, data, exchangeRate) => {
-  // Calculamos ROI
-  let roi = 0;
-  // Inversión Total = (Envío + Mercancía + Aranceles) + (Pérdidas por devolución)
-  const totalInvestmentLosses = Number(data.investment) + Number(data.returnLosses);
-  
-  if (totalInvestmentLosses > 0) {
-    roi = (data.netProfit / totalInvestmentLosses) * 100;
-  }
+// --- 🎮 COMMANDS SETUP ---
+const setupCommands = () => {
+    const helpMsg = `
+👋 <b>Habana Express Bot</b>
 
-  return `
-🗓️ *${title.toUpperCase()}*
+📋 <b>Comandos Disponibles:</b>
+
+📊 /monthly - Reporte del Mes
+📈 /yearly - Reporte del Año
+❓ /help - Ayuda
+    `;
+
+    bot.start((ctx) => ctx.reply(helpMsg, { parse_mode: 'HTML' }));
+    bot.help((ctx) => ctx.reply(helpMsg, { parse_mode: 'HTML' }));
+
+    bot.command('monthly', async (ctx) => {
+        try {
+            ctx.reply("⏳ <i>Generando reporte mensual...</i>", { parse_mode: 'HTML' });
+            const data = await getMonthlyReport();
+            const roi = data.investment > 0 ? ((data.netProfit / data.investment) * 100).toFixed(1) : 0;
+            
+            const msg = `
+📅 <b>REPORTE MENSUAL</b> | ${data.month}/${data.year}
 ──────────────
-📉 *Costo de Inversión*
-(Envío + Mercancía + Devoluciones)
-*${formatUSD(totalInvestmentLosses)}*
+💰 <b>Ingresos Totales</b>
+<b>(USD)</b> ${formatNumber(data.income)}
 
-💵 *Ingresos por Ventas*
-*${formatUSD(data.income)}*
-~${formatCUP(data.income, exchangeRate)}
+📉 <b>Inversión y Gastos</b>
+<b>(USD)</b> ${formatNumber(data.investment + data.returnLosses)}
 
-🤝 *Pagos a los Vendedores*
-*${formatUSD(data.commissions)}*
-~${formatCUP(data.commissions, exchangeRate)}
+✅ <b>GANANCIA NETA</b>
+<b>(USD)</b> ${formatNumber(data.netProfit)}
 
-🟢 *Ganancia Real*
-*${formatUSD(data.netProfit)}*
-~${formatCUP(data.netProfit, exchangeRate)}
+📊 <b>ROI:</b> ${roi}%
+            `;
+            ctx.reply(msg, { parse_mode: 'HTML' });
+        } catch (e) {
+            console.error("Monthly Report Error:", e);
+            ctx.reply("❌ Error generando reporte.");
+        }
+    });
 
-📊 *ROI:* ${roi.toFixed(1)}%
-  `;
+    bot.command('yearly', async (ctx) => {
+        try {
+            ctx.reply("⏳ <i>Generando reporte anual...</i>", { parse_mode: 'HTML' });
+            const data = await getAnnualReport();
+            const roi = data.investment > 0 ? ((data.netProfit / data.investment) * 100).toFixed(1) : 0;
+
+            const msg = `
+📈 <b>REPORTE ANUAL</b> | ${data.year}
+──────────────
+💰 <b>Ingresos Acumulados</b>
+<b>(USD)</b> ${formatNumber(data.income)}
+
+📉 <b>Inversión Total</b>
+<b>(USD)</b> ${formatNumber(data.investment + data.returnLosses)}
+
+✅ <b>GANANCIA NETA</b>
+<b>(USD)</b> ${formatNumber(data.netProfit)}
+
+📊 <b>ROI Anual:</b> ${roi}%
+            `;
+            ctx.reply(msg, { parse_mode: 'HTML' });
+        } catch (e) {
+            console.error("Yearly Report Error:", e);
+            ctx.reply("❌ Error generando reporte.");
+        }
+    });
 };
 
-// --- 🤖 INICIALIZACIÓN DEL BOT ---
+
+
+
+
+// --- 🚀 INITIALIZATION ---
+// export const initTelegramBot = async () => {
+//   try {
+//       const config = await prisma.system_configuration.findFirst();
+//       if (!config || !config.telegram_bot_token) {
+//         console.warn("⚠️ Telegram Bot Token not configured.");
+//         return;
+//       }
+
+//       bot = new Telegraf(config.telegram_bot_token);
+      
+      
+//       // Global Error Handler
+//       bot.catch((err) => console.error(`❌ Telegram Runtime Error:`, err));
+      
+//       setupCommands();
+      
+//       // Active Flag ON immediately
+//       isBotRunning = true; 
+
+//       // Silent Launch in Background
+//      await bot.launch("hola")
+//     //   console.log("🤖 ✅ Bot connected to Telegram");
+//         .then(async () => {
+//             console.log("🤖 ✅ Bot connected to Telegram");
+            
+//             // ✨ NOTIFY ADMINS ON STARTUP
+//             const startMsg = `
+// 🟢 <b>SISTEMA EN LÍNEA</b>
+// El servidor se ha reiniciado correctamente.
+
+// 📋 <b>Comandos Disponibles:</b>
+
+// 📊 /monthly - Reporte del Mes
+// 📈 /yearly - Reporte del Año
+// ❓ /help - Ayuda
+//             `;
+//             const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
+//             admins.forEach(u => safeReply(u.telegram_chat_id, startMsg));
+//         })
+//         .catch((err) => {
+//             console.error("❌ Telegram Connection Warning:", err.message);
+//         });
+
+//       // Graceful Stop
+//       process.once('SIGINT', () => bot.stop('SIGINT'));
+//       process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+//   } catch (error) {
+//       console.error("❌ Critical Error initializing Bot:", error.message);
+//       isBotRunning = false;
+//       bot = null;
+//   }
+// };
+
+
+// export const initTelegramBot = async () => {
+//   try {
+//     const config = await prisma.system_configuration.findFirst();
+
+//     if (!config || !config.telegram_bot_token) {
+//       console.warn("⚠️ Telegram Bot Token not configured.");
+//       return;
+//     }
+
+//     bot = new Telegraf(config.telegram_bot_token);
+
+//     bot.catch((err) => console.error("❌ Telegram Runtime Error:", err));
+
+//     setupCommands();
+
+//     console.log("⏳ Iniciando bot de Telegram...");
+
+//     // 🔥 ESTA ES LA CLAVE: usar await
+//     await bot.launch();
+
+//     console.log("🤖 Bot conectado a Telegram");
+//     isBotRunning = true;
+
+//     // 📢 Mensaje inicial a admins
+//     const startMsg = `
+// 🟢 <b>SISTEMA EN LÍNEA</b>
+// El servidor se ha reiniciado correctamente.
+
+// 📋 <b>Comandos Disponibles:</b>
+
+// 📊 /monthly - Reporte del Mes
+// 📈 /yearly - Reporte del Año
+// ❓ /help - Ayuda
+//     `;
+
+//     const admins = await prisma.users.findMany({
+//       where: { role: 'admin', telegram_chat_id: { not: null } }
+//     });
+
+//     for (const u of admins) {
+//       await safeReply(u.telegram_chat_id, startMsg);
+//     }
+
+//     process.once('SIGINT', () => bot.stop('SIGINT'));
+//     process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+//   } catch (error) {
+//     console.error("❌ Critical Error initializing Bot:", error.message);
+//     isBotRunning = false;
+//     bot = null;
+//   }
+// };
+
+
+// export const initTelegramBot = async () => {
+//   try {
+//     const config = await prisma.system_configuration.findFirst();
+
+//     if (!config || !config.telegram_bot_token) {
+//       console.warn("⚠️ Telegram Bot Token not configured.");
+//       return;
+//     }
+
+//     bot = new Telegraf(config.telegram_bot_token);
+
+//     bot.catch((err) => console.error("❌ Telegram Runtime Error:", err));
+
+//     setupCommands();
+
+//     console.log("⏳ Iniciando bot de Telegram...");
+
+//     // 🚀 Lanzar el bot SIN bloquear el event loop
+//     bot.launch()
+//       .then(async () => {
+//         console.log("🤖 Bot conectado a Telegram");
+
+//         const startMsg = `
+// 🟢 <b>SISTEMA EN LÍNEA</b>
+// El servidor se ha reiniciado correctamente.
+
+// 📋 <b>Comandos Disponibles:</b>
+
+// 📊 /monthly - Reporte del Mes
+// 📈 /yearly - Reporte del Año
+// ❓ /help - Ayuda
+//         `;
+
+//         const admins = await prisma.users.findMany({
+//           where: { role: 'admin', telegram_chat_id: { not: null } }
+//         });
+
+//         for (const u of admins) {
+//           await safeReply(u.telegram_chat_id, startMsg);
+//         }
+//       })
+//       .catch((err) => {
+//         console.error("❌ Error iniciando bot:", err.message);
+//       });
+
+//     // 🛑 Cierre elegante
+//     process.once('SIGINT', () => bot.stop('SIGINT'));
+//     process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+//   } catch (error) {
+//     console.error("❌ Critical Error initializing Bot:", error.message);
+//   }
+// };
 
 export const initTelegramBot = async () => {
-  const config = await prisma.system_configuration.findFirst();
-  
-  if (!config || !config.telegram_bot_token) {
-    console.warn("⚠️ Telegram Bot Token not found in DB. Bot disabled.");
-    return;
+  try {
+    const config = await prisma.system_configuration.findFirst();
+
+    if (!config || !config.telegram_bot_token) {
+      console.warn("⚠️ Telegram Bot Token not configured.");
+      return;
+    }
+
+    bot = new Telegraf(config.telegram_bot_token, {
+      telegram: { apiRoot: "https://api.telegram.org" },
+      handlerTimeout: 30000
+    });
+
+    bot.catch((err) => console.error("❌ Telegram Runtime Error:", err));
+
+    setupCommands();
+
+    //console.log("⏳ Iniciando bot de Telegram...");
+
+    // 🚀 Lanzar sin await y forzando polling puro
+    bot.launch({
+      dropPendingUpdates: true,
+      polling: {
+        timeout: 30,
+        limit: 100
+      }
+    });
+
+    console.log("🤖 Telegram bot running 🚀");
+
+    // Mensaje inicial
+    const initMsg = `
+🤖 <b> Habana Express Bot 🚀 </b>
+    `;
+
+    const strHelp = `
+📋 <b>Comandos Disponibles:</b>
+📊 /monthly - Reporte del Mes
+📈 /yearly - Reporte del Año
+❓ /help - Ayuda`
+
+    const admins = await prisma.users.findMany({
+      where: { role: 'admin', telegram_chat_id: { not: null } }
+    });
+
+    for (const u of admins) {
+      await safeReply(u.telegram_chat_id, initMsg);
+      await safeReply(u.telegram_chat_id, strHelp);
+    }
+
+    process.once('SIGINT', () => bot.stop('SIGINT'));
+    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+  } catch (error) {
+    console.error("❌ Critical Error initializing Bot:", error.message);
   }
-
-  bot = new Telegraf(config.telegram_bot_token);
-
-  // 1. Manejo Global de Errores (Anti-Crash)
-  bot.catch((err, ctx) => {
-    console.error(`❌ Telegram Error for ${ctx.updateType}`, err);
-    try {
-        ctx.reply("⚠️ Ocurrió un error interno en el bot. Intenta más tarde.");
-    } catch (e) {} // Si falla el reply, no hacemos nada
-  });
-
-  // 2. Middleware de Seguridad (RBAC)
-  bot.use(async (ctx, next) => {
-    if (!ctx.chat) return next();
-    
-    // Permitir /start sin auth para obtener el ID
-    if (ctx.message && ctx.message.text === '/start') return next();
-
-    try {
-        const user = await prisma.users.findFirst({ where: { telegram_chat_id: String(ctx.chat.id) } });
-        if (!user) {
-        return ctx.reply(`⛔ No tienes acceso. Tu ID es: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' });
-        }
-        ctx.user = user; // Guardamos usuario en contexto
-        return next();
-    } catch (error) {
-        console.error("Auth DB Error:", error);
-        return ctx.reply("⚠️ Error de conexión.");
-    }
-  });
-
-  // 3. COMANDOS BÁSICOS
-  const sendMenu = (ctx) => {
-    const msg = `
-👋 *Habana Express Bot*
-
-Sistema operativo y conectado.
-
-*Comandos Disponibles:*
-📊 \`/monthly\` - Reporte del Mes
-📈 \`/yearly\` - Reporte del Año
-❓ \`/help\` - Ver este menú
-
-🆔 *Tu ID:* \`${ctx.chat.id}\`
-    `;
-    ctx.reply(msg, { parse_mode: 'Markdown' });
-  };
-
-  bot.start((ctx) => sendMenu(ctx));
-  bot.help((ctx) => sendMenu(ctx));
-
-  // 4. COMANDO: /monthly
-  bot.command('monthly', async (ctx) => {
-    if (ctx.user.role !== 'admin') return ctx.reply("🔒 Comando solo para Administradores.");
-    
-    try {
-      ctx.reply("⏳ Generando reporte mensual...");
-      const data = await getMonthlyReport();
-      const config = await prisma.system_configuration.findFirst();
-      const text = generateFinancialTextReport(`FEBRERO ${data.year}`, data, config.default_exchange_rate); // Ojo: data.month lo puedes formatear a nombre
-      ctx.reply(text, { parse_mode: 'Markdown' });
-    } catch (e) {
-      console.error(e);
-      ctx.reply("❌ Error generando reporte mensual.");
-    }
-  });
-
-  // 5. COMANDO: /yearly
-  bot.command('yearly', async (ctx) => {
-    if (ctx.user.role !== 'admin') return ctx.reply("🔒 Comando solo para Administradores.");
-
-    try {
-      ctx.reply("⏳ Generando reporte anual...");
-      const data = await getAnnualReport();
-      const config = await prisma.system_configuration.findFirst();
-      const text = generateFinancialTextReport(`RESUMEN AÑO ${data.year}`, data, config.default_exchange_rate);
-      ctx.reply(text, { parse_mode: 'Markdown' });
-    } catch (e) {
-      console.error(e);
-      ctx.reply("❌ Error generando reporte anual.");
-    }
-  });
-
-  // 6. MANEJO DE COMANDOS DESCONOCIDOS (Catch-All)
-  bot.on('text', (ctx) => {
-    // Si no entró en los comandos anteriores, cae aquí
-    const msg = `
-🤷‍♂️ *No entendí eso*
-
-Intenta usar uno de estos comandos:
-📊 \`/monthly\` - Reporte del Mes
-📈 \`/yearly\` - Reporte del Año
-❓ \`/help\` - Ayuda
-    `;
-    ctx.reply(msg, { parse_mode: 'Markdown' });
-  });
-
-  // 7. CRON JOBS (Reportes Automáticos)
-  scheduleAutomaticReports();
-
-  bot.launch();
-  console.log("🤖 Telegram Bot Started!");
-  
-  // Graceful stop
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
 };
 
-// --- 🔔 FUNCIONES DE NOTIFICACIÓN (Exportadas) ---
 
+
+
+// --- 🔔 NOTIFICATIONS ---
+
+// 1. NOTIFY NEW SALE
 export const notifySale = async (sale) => {
   if (!bot) return;
 
   try {
-      // Obtener Configuración para cálculos
       const config = await prisma.system_configuration.findFirst();
       const commissionPct = Number(config.seller_commission_percentage);
-      const exchangeRate = Number(sale.exchange_rate); // Usar tasa de la venta
+      const exchangeRate = Number(sale.exchange_rate);
       
-      // Cálculos para Admin (Ganancia Real Estimada de esta venta)
       const totalSaleUSD = Number(sale.total_cup) / exchangeRate;
-      
-      // 1. Costo de los productos vendidos
       let totalProductCostUSD = 0;
+      let productList = "";
+      
       sale.sale_products.forEach(item => {
           totalProductCostUSD += (Number(item.product.purchase_price) * item.quantity);
+          productList += `📦 ${item.product.name} (x${item.quantity})\n`;
       });
 
-      // 2. Comisión pagada
-      const commissionPaid = totalSaleUSD * (commissionPct / 100);
+      const commissionUSD = totalSaleUSD * (commissionPct / 100);
+      const netProfitUSD = totalSaleUSD - totalProductCostUSD - commissionUSD;
 
-      // 3. Ganancia Operativa
-      const grossMargin = totalSaleUSD - totalProductCostUSD - commissionPaid;
+      const totalSaleCUP = Number(sale.total_cup);
+      const netProfitCUP = netProfitUSD * exchangeRate;
+      const commissionCUP = commissionUSD * exchangeRate;
 
-      
-      // 5. Ganancia Real
-      const realProfit = grossMargin;
-
-
-      // --- A. NOTIFICAR AL ADMIN ---
-      const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
-      
       const adminMsg = `
-🔔 *Nueva Venta*
-👤 *Vendedor:* ${sale.seller.name}
-
-💵 *Ingreso:*
-*${formatUSD(totalSaleUSD)}*
-${new Intl.NumberFormat('es-CU', { style: 'currency', currency: 'CUP' }).format(Number(sale.total_cup))}
-
-✅ *Ganancia Real:* *${formatUSD(realProfit)}*
-_(Después de costos, comisión y diezmo)_
-      `;
-      
-      admins.forEach(admin => {
-        bot.telegram.sendMessage(admin.telegram_chat_id, adminMsg, { parse_mode: 'Markdown' }).catch(e => console.error("Error sending to admin", e));
-      });
-
-      // --- B. NOTIFICAR AL SELLER ---
-      if (sale.seller.telegram_chat_id) {
-        // Construimos la lista de productos
-        const productList = sale.sale_products.map(p => `📦 ${p.product.name} (x${p.quantity})`).join('\n');
-
-        const sellerMsg = `
-💸 *Comisión Recibida*
-
+💵 <b>NUEVA VENTA</b> | ${sale.seller.name}
+──────────────
 ${productList}
-💰 *Ganancia:* *+${formatUSD(commissionPaid)}*
+💰 <b>Ingreso Total</b>
+<b>(CUP)</b> ${formatNumber(totalSaleCUP)}
+<b>(USD)</b> ${formatNumber(totalSaleUSD)}
 
-_¡Sigue así!_ 🚀
-        `;
-        bot.telegram.sendMessage(sale.seller.telegram_chat_id, sellerMsg, { parse_mode: 'Markdown' }).catch(e => console.error("Error sending to seller", e));
+❇️ <b>Ganancia Neta</b>
+<b>(CUP)</b> ${formatNumber(netProfitCUP)}
+<b>(USD)</b> ${formatNumber(netProfitUSD)}
+      `;
+
+      const sellerMsg = `
+💵 <b>VENTA REGISTRADA</b>
+──────────────
+${productList}
+💸 <b>Tu Comisión:</b>
+<b>(CUP)</b> +${formatNumber(commissionCUP)}
+
+🔥 <i>¡Seguimos sumando!</i>
+      `;
+
+      const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
+      admins.forEach(u => safeReply(u.telegram_chat_id, adminMsg));
+      
+      if (sale.seller.telegram_chat_id) {
+          safeReply(sale.seller.telegram_chat_id, sellerMsg);
       }
 
-  } catch (error) {
-      console.error("⚠️ Error notificando venta:", error);
-  }
+  } catch (error) { console.error("Notify Sale Error:", error.message); }
 };
 
-export const notifyReturn = async (returnData) => {
+// 2. NOTIFY STOCK DEPLETION (Strict Financial Calculation)
+export const notifyStockDepletion = async (product) => {
   if (!bot) return;
-
   try {
-      // Buscar ADMINS y STOREKEEPERS
-      const recipients = await prisma.users.findMany({
-        where: {
-            OR: [
-                { role: 'admin' },
-                { role: 'storekeeper' }
-            ],
-            telegram_chat_id: { not: null }
-        }
-      });
+    const config = await prisma.system_configuration.findFirst();
+    const commissionPct = config ? Number(config.seller_commission_percentage) : 0;
 
-      const msg = `
-↩️ *Alerta de Devolución*
-📦 *Producto:* ${returnData.product.name}
-📝 *Motivo:* ${returnData.reason || 'No especificado'}
+    const salesHistory = await prisma.sale_products.findMany({
+        where: { id_product: product.id_product },
+        include: { sale: true }
+    });
 
-📉 *Pérdida:* -${formatUSD(returnData.loss_usd)}
-🔄 _Inventario actualizado._
-      `;
+    let totalQuantitySold = 0;
+    
+    // Calculate Total Quantity
+    salesHistory.forEach(item => {
+        totalQuantitySold += item.quantity;
+    });
 
-      recipients.forEach(user => {
-        bot.telegram.sendMessage(user.telegram_chat_id, msg, { parse_mode: 'Markdown' }).catch(e => console.error("Error sending return alert", e));
-      });
+    // 1. Total Investment (Costo real de la mercancía)
+    const purchasePrice = Number(product.purchase_price);
+    const totalInvestmentUSD = purchasePrice * totalQuantitySold;
 
-  } catch (error) {
-    console.error("⚠️ Error notificando devolución:", error);
-  }
+    // 2. Revenue Calculation (Pricing Rule: Cost * 2)
+    // Assumption: Sales were made following the rule.
+    const totalRevenueUSD = totalInvestmentUSD * 2;
+
+    // 3. Commissions Paid
+    const totalCommissionsUSD = totalRevenueUSD * (commissionPct / 100);
+
+    // 4. Net Profit
+    const netProfitUSD = totalRevenueUSD - totalInvestmentUSD - totalCommissionsUSD;
+
+    const msg = `
+📉 <b>STOCK AGOTADO</b>
+Se vendieron todos los <b>${product.name}</b>
+
+📊 <b>Resumen del Lote:</b>
+
+📦 <b>Unidades Vendidas:</b> ${totalQuantitySold}
+
+💰 <b>Costo de Inversión</b>
+<b>(USD)</b> ${formatNumber(totalInvestmentUSD)}
+<i>(${totalQuantitySold} unid. x $${formatNumber(purchasePrice)} costo)</i>
+
+✅ <b>Ganancia Neta</b>
+<b>(USD)</b> ${formatNumber(netProfitUSD)}
+<i>(Descontando comisiones)</i>
+    `;
+
+    const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
+    admins.forEach(u => safeReply(u.telegram_chat_id, msg));
+
+  } catch (error) { console.error("Notify Stock Error:", error.message); }
 };
 
-// --- 📅 CRON JOB INTERNO ---
-const scheduleAutomaticReports = async () => {
-    // Revisar cada hora (minuto 0)
-    cron.schedule('0 * * * *', async () => {
-        try {
-            const config = await prisma.system_configuration.findFirst();
-            if (!config) return;
+// 3. NOTIFY DAILY UPDATE (ADMIN)
+export const notifyDailyUpdate = async (newRate, productsCount) => {
+    if (!bot) return;
+    try {
+        const msg = `
+🤖 <b>Sincronización Diaria Completada</b>
 
-            const now = new Date();
-            const currentDay = now.getDate();
-            const currentHour = now.getHours();
+✅ <b>Nueva Tasa:</b> ${newRate} CUP
+📊 <b>Productos actualizados:</b> ${productsCount}
+📨 <b>Vendedores notificados.</b>
+        `;
+        const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
+        admins.forEach(u => safeReply(u.telegram_chat_id, msg));
+    } catch (e) { console.error(e); }
+};
 
-            // Reporte Mensual
-            if (config.monthly_report_day === currentDay) {
-                 const reportTime = new Date(config.monthly_report_time);
-                 if (reportTime.getUTCHours() === currentHour) {
-                     const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
-                     const data = await getMonthlyReport();
-                     const text = generateFinancialTextReport(`REPORTE AUTOMÁTICO: ${data.month}/${data.year}`, data, config.default_exchange_rate);
-                     
-                     admins.forEach(admin => bot.telegram.sendMessage(admin.telegram_chat_id, text, { parse_mode: 'Markdown' }).catch(e => console.error(e)));
-                 }
-            }
+// 4. NOTIFY DAILY PRICES (SELLER)
+export const notifyDailyPrices = async (seller, newRate) => {
+    if (!bot || !seller.telegram_chat_id) return;
+    try {
+        let msg = `
+🌅 <b>Buenos días, ${seller.name}</b>
 
-            // Reporte Anual (Diciembre)
-            if (config.annual_report_day === currentDay && (now.getMonth() + 1) === 12) {
-                const reportTime = new Date(config.annual_report_time);
-                if (reportTime.getUTCHours() === currentHour) {
-                    const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
-                    const data = await getAnnualReport();
-                    const text = generateFinancialTextReport(`REPORTE AUTOMÁTICO: AÑO ${data.year}`, data, config.default_exchange_rate);
-                    
-                    admins.forEach(admin => bot.telegram.sendMessage(admin.telegram_chat_id, text, { parse_mode: 'Markdown' }).catch(e => console.error(e)));
-                }
-            }
-        } catch (error) {
-            console.error("Error in Cron Job:", error);
-        }
-    });
+💱 <b>Tasa del día:</b> ${newRate} CUP
+📋 <b>Tus Productos Actualizados:</b>
+`;
+        seller.seller_products.forEach(sp => {
+            const priceNow = Number(sp.product.purchase_price) * 2 * newRate;
+            msg += `
+📦 <b>${sp.product.name}</b>
+<b>(CUP)</b> ${formatNumber(priceNow)}
+🎒 Stock: ${sp.quantity}
+`;
+        });
+        msg += `\n🚀 <i>¡Éxito en las ventas de hoy!</i>`;
+        safeReply(seller.telegram_chat_id, msg);
+    } catch (e) { console.error(e); }
+};
+
+// 5. NOTIFY RETURN
+export const notifyReturn = async (returnData) => {
+    if (!bot) return;
+    try {
+        const msg = `
+❌ <b>DEVOLUCIÓN</b>
+────────────────────
+📦 <b>Producto:</b> ${returnData.product.name}
+🔢 <b>Cant:</b> ${returnData.quantity}
+📝 <b>Motivo:</b> ${returnData.reason || 'No especificado'}
+
+📉 <b>Pérdida:</b>
+<b>(USD)</b> -${formatNumber(returnData.loss_usd)}
+
+        `;
+        const recipients = await prisma.users.findMany({
+          where: { role: { in: ['admin'] }, telegram_chat_id: { not: null } }
+        });
+        recipients.forEach(u => safeReply(u.telegram_chat_id, msg));
+    } catch (e) { console.error(e); }
 };

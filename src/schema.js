@@ -128,6 +128,14 @@ export const typeDefs = gql`
     notes: String
   }
 
+
+
+  type DashboardStats {
+    exchangeRate: Float!
+    activeProductsCount: Int!
+    totalItemsSold: Int!
+  }
+
   type SellerProduct {
     id_seller_product: Int!
     quantity: Int!
@@ -177,6 +185,28 @@ export const typeDefs = gql`
     password_hash: String!
     telegram_chat_id: String
     role: Role!
+  }
+
+  
+  input UpdateShipmentInput {
+  agency_name: String
+  shipment_date: String
+  shipping_cost_usd: Float
+  merchandise_cost_usd: Float
+  customs_fee_cup: Float
+  exchange_rate: Float
+  notes: String
+}
+
+  input UpdateUserInput {
+    name: String
+    phone: String
+    email: String
+    photo_url: String
+    password: String      # Opcional: Solo si quiere cambiarla
+    telegram_chat_id: String
+    role: Role            # Opcional: Solo Admin podrá usarlo
+    active: Boolean
   }
 
   input CreateProductInput {
@@ -237,6 +267,7 @@ export const typeDefs = gql`
   # --- QUERY & MUTATION ---
 
   type Query {
+     me: User
     systemConfiguration: [SystemConfiguration]
     users: [User]
     user(id_user: Int!): User
@@ -251,13 +282,20 @@ export const typeDefs = gql`
     monthlyReport: MonthlyReport
     annualReport: AnnualReport
     topSellers(period: String!): [TopSeller]
+    dashboardStats: DashboardStats
   }
 
   type Mutation {
     login(phone: String!, password: String!): AuthPayload
     
     createUser(input: CreateUserInput!): User
+    updateUser(id_user: Int!, input: UpdateUserInput!): User
+    deleteUser(id_user: Int!): User
     createCategory(name: String!): Category 
+
+    updateCategory(id_category: Int!, name: String!): Category
+    deleteCategory(id_category: Int!): Category
+
     createProduct(input: CreateProductInput!): Product
     updateProduct(id_product: Int!, input: UpdateProductInput!): Product
     deleteProduct(id_product: Int!): Product
@@ -284,6 +322,11 @@ export const typeDefs = gql`
       exchange_rate: Float!,
       notes: String
     ): Shipment
+
+    updateShipment(id_shipment: Int!, input: UpdateShipmentInput!): Shipment 
+    deleteShipment(id_shipment: Int!): Shipment
+
+    
     
     updateSystemConfiguration(id_config: Int!, input: UpdateSystemConfigurationInput!): SystemConfiguration
   }

@@ -51,6 +51,19 @@ export const resolvers = {
       return prisma.users.findUnique({ where: { id_user }, include: { seller_products: true, sales: true } });
     },
 
+     user: (_, { id_user }, { user }) => {
+      requireAdmin(user);
+      return prisma.users.findUnique({ where: { id_user }, include: { seller_products: true, sales: true } });
+    },
+    
+    // ✅ NUEVO: Permite al usuario logueado pedir sus propios datos
+    me: (_, __, { user }) => {
+      requireAuth(user);
+      return prisma.users.findUnique({ 
+        where: { id_user: user.userId } // Usamos el ID que viene del Token
+      });
+    },
+
     // --- PRODUCTS ---
     products: (_, __, { user }) => {
       requireAuth(user);
@@ -75,10 +88,15 @@ export const resolvers = {
       });
     },
 
+   
     // --- CATEGORIES ---
     categories: (_, __, { user }) => {
       requireAuth(user);
-      return prisma.categories.findMany({ include: { product_categories: true } });
+      // CAMBIO: Agregamos { where: { active: true } }
+      return prisma.categories.findMany({ 
+        where: { active: true },
+        include: { product_categories: true } 
+      });
     },
 
     // --- SALES & RETURNS ---
@@ -101,6 +119,30 @@ export const resolvers = {
       requireStorekeeper(user);
       return prisma.shipments.findMany();
     },
+
+    dashboardStats: async (_, __, { user }) => {
+      requireAuth(user);
+      
+      // 1. Tasa actual
+      const config = await prisma.system_configuration.findFirst();
+      
+      // 2. Productos Activos
+      const activeProducts = await prisma.products.count({
+        where: { active: true }
+      });
+
+      // 3. Total Productos Vendidos (Suma de cantidades en sale_products)
+      const soldAggregation = await prisma.sale_products.aggregate({
+        _sum: { quantity: true }
+      });
+
+      return {
+        exchangeRate: config?.default_exchange_rate || 0,
+        activeProductsCount: activeProducts,
+        totalItemsSold: soldAggregation._sum.quantity || 0
+      };
+    },
+
     sellerProducts: (_, { sellerId }, { user }) => {
       requireAuth(user);
       // Lógica: Si soy Admin/Storekeeper uso el ID solicitado. Si soy Seller, forzamos mi propio ID.
@@ -151,6 +193,48 @@ export const resolvers = {
       return prisma.users.create({ data: { ...input, password_hash: hashedPassword } });
     },
 
+     // ✅ NUEVO: Actualización inteligente y segura
+    updateUser: async (_, { id_user, input }, { user }) => {
+      requireAuth(user);
+
+      // 1. REGLA DE ORO: Solo el Admin puede editar a otros.
+      // Si no eres Admin, el ID que intentas editar DEBE ser el tuyo.
+      if (user.role !== 'admin' && user.userId !== id_user) {
+        throw new Error("⛔ Forbidden: You can only edit your own profile.");
+      }
+
+      const dataToUpdate = { ...input };
+
+      // 2. SEGURIDAD DE ROL: Si no es admin, borramos el campo 'role' del input
+      // Para evitar que un vendedor se auto-ascienda a admin.
+      if (user.role !== 'admin' && dataToUpdate.role) {
+        delete dataToUpdate.role; 
+      }
+
+      // 3. PASSWORD: Si viene password, lo hasheamos. Si no, lo quitamos para no romper el actual.
+      if (dataToUpdate.password) {
+        dataToUpdate.password_hash = await hashPassword(dataToUpdate.password);
+        delete dataToUpdate.password; // Borramos el campo en texto plano
+      } else {
+        delete dataToUpdate.password; // Aseguramos que no vaya undefined
+      }
+
+      return prisma.users.update({
+        where: { id_user },
+        data: dataToUpdate
+      });
+    },
+
+    // ✅ NUEVO: Soft Delete (Solo Admin)
+    deleteUser: async (_, { id_user }, { user }) => {
+      requireAdmin(user);
+      // No borramos físicamente para no perder historial de ventas
+      return prisma.users.update({
+        where: { id_user },
+        data: { active: false }
+      });
+    },
+
     // --- CONFIGURATION ---
     updateSystemConfiguration: async (_, { id_config, input }, { user }) => {
       requireAdmin(user);
@@ -161,6 +245,25 @@ export const resolvers = {
     createCategory: (_, { name }, { user }) => {
        requireStorekeeper(user);
        return prisma.categories.create({ data: { name } });
+    },
+
+    
+    // AGREGA ESTO DEBAJO:
+    updateCategory: (_, { id_category, name }, { user }) => {
+       requireStorekeeper(user);
+       return prisma.categories.update({
+         where: { id_category },
+         data: { name }
+       });
+    },
+
+    deleteCategory: async (_, { id_category }, { user }) => {
+      requireStorekeeper(user);
+      // Soft Delete: No borramos el registro, solo lo desactivamos
+      return prisma.categories.update({
+        where: { id_category },
+        data: { active: false }
+      });
     },
 
     createProduct: (_, { input }, { user }) => {
@@ -373,6 +476,34 @@ export const resolvers = {
       requireAdmin(user); // Solo Admin puede gestionar costos de importación
       return prisma.shipments.create({ data: args }); 
     },
+
+    updateShipment: (_, { id_shipment, ...args }, { user }) => {
+      requireAdmin(user);
+      
+      // Limpieza y conversión de tipos para evitar Error 400
+      const dataToUpdate = {
+        ...args,
+        // Si viene fecha, la convertimos a objeto Date real
+        shipment_date: args.shipment_date ? new Date(args.shipment_date) : undefined,
+        // Aseguramos que los números sean números
+        shipping_cost_usd: args.shipping_cost_usd ? parseFloat(args.shipping_cost_usd) : undefined,
+        merchandise_cost_usd: args.merchandise_cost_usd ? parseFloat(args.merchandise_cost_usd) : undefined,
+        customs_fee_cup: args.customs_fee_cup ? parseFloat(args.customs_fee_cup) : undefined,
+        exchange_rate: args.exchange_rate ? parseFloat(args.exchange_rate) : undefined,
+      };
+
+      return prisma.shipments.update({
+        where: { id_shipment },
+        data: dataToUpdate
+      });
+    },
+
+    deleteShipment: async (_, { id_shipment }, { user }) => { 
+      requireAdmin(user); 
+      return prisma.shipments.delete({ where: { id_shipment } }); },
+
+
+
   },
 
   // Field Resolvers (Resolución de campos anidados)

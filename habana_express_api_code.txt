@@ -280,118 +280,139 @@ Archivo: C:\Users\gabry\Desktop\Habana Express Store\habana-express-api\README.m
 <div align="center">
 
   <h1>?? Habana Express API</h1>
-  <h3>Backend Oficial para Habana Express Store</h3>
+  <h3>Sistema ERP para Importaci¢n, Log°stica y Finanzas en Cuba</h3>
 
   <p>
-    <img src="https://img.shields.io/badge/Node.js-18.x-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="NodeJS" />
-    <img src="https://img.shields.io/badge/GraphQL-Apollo-E10098?style=for-the-badge&logo=graphql&logoColor=white" alt="GraphQL" />
-    <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma" />
-    <img src="https://img.shields.io/badge/MySQL-DB-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL" />
-    <img src="https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram" />
+    <img src="https://img.shields.io/badge/Node.js-18.x-339933?style=flat-square&logo=node.js&logoColor=white" alt="NodeJS" />
+    <img src="https://img.shields.io/badge/GraphQL-Apollo-E10098?style=flat-square&logo=graphql&logoColor=white" alt="GraphQL" />
+    <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=flat-square&logo=prisma&logoColor=white" alt="Prisma" />
+    <img src="https://img.shields.io/badge/MySQL-DB-4479A1?style=flat-square&logo=mysql&logoColor=white" alt="MySQL" />
+    <img src="https://img.shields.io/badge/Telegram-Bot-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram" />
   </p>
 
   <p>
-    <b>"Productos internacionales al alcance de tu mano a un buen precio."</b>
+    <b>Soluci¢n Backend integral para superar las barreras del comercio con doble moneda.</b>
     <br>
-    <i>Un sistema robusto para log°stica, inventario descentralizado y finanzas automatizadas en Cuba.</i>
+    <i>Gesti¢n de inventario descentralizada, fijaci¢n de precios din†mica y reportes financieros automatizados.</i>
   </p>
 
 </div>
 
 <hr>
 
-## ?? Visi¢n del Proyecto
+## ?? Descripci¢n del Proyecto
 
-Nuestro objetivo es ofrecer una plataforma tecnol¢gica que simplifique el comercio electr¢nico, superando las barreras de la doble moneda (USD/CUP). El sistema integra **Gesti¢n de Stock en Tiempo Real**, **C†lculo Financiero Avanzado** y **Notificaciones v°a Telegram**, permitiendo una operaci¢n transparente y eficiente.
+**Habana Express API** no es solo un gestor de inventario; es un motor financiero dise§ado para el contexto cubano. El sistema automatiza la compleja relaci¢n entre el costo de importaci¢n (USD), la tasa de cambio fluctuante (CUP) y la gesti¢n de vendedores comisionistas.
+
+Su n£cleo integra un **Bot de Telegram** que act£a como asistente administrativo, eliminando la necesidad de paneles webs complejos para la operaci¢n diaria.
+
+---
+
+## ?? Caracter°sticas Clave
+
+### 1. ?? Finanzas & Doble Moneda
+*   **Fijaci¢n de Precios Din†mica:** El sistema consulta diariamente APIs externas para obtener la tasa de cambio actual.
+*   **Algoritmo de Precios:** Recalcula autom†ticamente el precio de venta en CUP de todo el inventario activo bas†ndose en la f¢rmula: `Costo USD * 2 * Tasa del D°a`.
+*   **C†lculo de Ganancia Real:** Reportes que descuentan costos de env°o, aranceles aduanales, pÇrdidas por devoluciones y comisiones de vendedores.
+
+### 2. ?? Log°stica & Inventario
+*   **Inventario en Consignaci¢n:** Distinci¢n entre **Stock Global** (AlmacÇn) y **Stock Asignado** (Vendedor). Un vendedor solo puede vender lo que se le ha asignado.
+*   **Stock Reactivo:**
+    *   Si el stock llega a `0`, el producto se desactiva autom†ticamente.
+    *   Notificaci¢n autom†tica de "Liquidaci¢n de Lote" con an†lisis de rentabilidad final.
+
+### 3. ?? Integraci¢n Profunda con Telegram
+El sistema "habla" con los usuarios seg£n su rol:
+*   **Admin:** Recibe reportes financieros (ROI), alertas de stock agotado y resumen de ganancias netas por venta.
+*   **Vendedores:** Reciben cada ma§ana su lista de precios actualizada seg£n la tasa del d°a y notificaciones de sus comisiones ganadas.
 
 ---
 
 ## ??? Stack Tecnol¢gico
 
-<div align="center">
-
-| Tecnolog°a | Uso en el Proyecto |
-| :--- | :--- |
-| **Node.js + Express** | Core del servidor y endpoints REST auxiliares. |
-| **GraphQL (Apollo)** | API principal para consultas flexibles y tipadas. |
-| **Prisma ORM** | Capa de acceso a datos y gesti¢n de migraciones MySQL. |
-| **MySQL** | Base de datos relacional (Esquema `habana_express_store`). |
-| **Telegraf + Node-Cron** | Bot de notificaciones y tareas programadas (Reportes). |
-| **JWT & Bcrypt** | Seguridad y autenticaci¢n basada en **TelÇfono**. |
-
-</div>
+| Componente | Tecnolog°a | Uso |
+| :--- | :--- | :--- |
+| **Server** | Node.js + Express | Servidor HTTP y manejo de archivos est†ticos. |
+| **API** | Apollo Server (GraphQL) | Endpoint £nico tipado para consultas y mutaciones. |
+| **ORM** | Prisma | Modelado de datos y migraciones seguras a MySQL. |
+| **Database** | MySQL | Almacenamiento relacional con soporte UTF8MB4. |
+| **Automation** | Node-Cron + Axios | Scraping de tasas de cambio y tareas programadas. |
+| **Bot** | Telegraf | Interfaz de chat para comandos y notificaciones push. |
 
 ---
 
-## ?? L¢gica de Negocio y Finanzas
+## ?? L¢gica Financiera (Profit Formula)
 
-El sistema implementa reglas estrictas para asegurar la rentabilidad y el control.
+El sistema prioriza la **transparencia financiera**. La ganancia neta no es una estimaci¢n, es un c†lculo exacto:
 
-### 1. Gesti¢n de Inventario Autom†tica
-*   ?? **Reactiva:** Si entra stock a un producto inactivo, se activa autom†ticamente.
-*   ?? **Desactiva:** Si el stock llega a `0` tras una venta, el producto se oculta autom†ticamente.
-*   ?? **Inventario Asignado:** Cada vendedor (Seller) visualiza solo la mercanc°a que el Almacenero le ha asignado.
+Ganancia Neta = Ingresos Totales - (Costo Mercanc°a + Env°os + Aranceles + PÇrdidas Devoluci¢n + Comisiones Vendedor)
 
-### 2. F¢rmula Financiera (Strict Profit Logic)
-<details>
-<summary><b>?? Haz clic para ver la f¢rmula matem†tica de ganancia</b></summary>
-<br>
+Nota: El sistema aplica redondeos inteligentes a las decenas en la tasa de cambio (ej: 314 -> 310, 316 -> 320) para facilitar el manejo de efectivo en CUP.
 
-El sistema calcula la ganancia real descontando todos los factores operativos y espirituales:
+?? Instalaci¢n y Despliegue
+1. Requisitos Previos
+Node.js v18+
+MySQL Server corriendo localmente o en nube.
+2. Clonar y Dependencias
 
-```math
-1. Ganancia Operativa = Ingresos - (Costo Mercanc°a + Env°o + Aranceles + PÇrdidas Devoluci¢n + Comisiones Seller)
-
-2. Diezmo = Ganancia Operativa * 10%
-
-3. GANANCIA NETA FINAL = Ganancia Operativa - Diezmo
-
-
-?? Habana Express Bot
-Un asistente virtual integrado en Telegram que notifica en tiempo real seg£n el rol del usuario.
-<div align="center">
-Rol de Usuario	Evento	Descripci¢n de la Notificaci¢n
-?? Admin	
-Nueva Venta	Detalle de ingresos, desglose de costos y Ganancia Neta Real.
-Reportes	
-Estados Financieros autom†ticos (Mensual y Anual).
-Alertas	Notificaci¢n de devoluciones y pÇrdidas.
-?? Seller	Comisi¢n	Notificaci¢n inmediata de la ganancia obtenida ($) por su venta.
-?? Storekeeper	Devoluci¢n	Alerta para reingreso de stock al inventario f°sico.
-</div>
-Comandos de Administraci¢n
-/start - Inicia el bot y obtiene el Chat ID.
-/monthly - Genera el Estado Financiero Mensual (Estilo Financial Statement).
-/yearly - Genera el Estado Financiero Anual con c†lculo de ROI.
-/help - Men£ de ayuda.
-
-?? Instalaci¢n y Puesta en Marcha
-Sigue estos pasos para levantar el servidor backend.
-1. Clonar y Preparar
-
-git clone https://github.com/dreamer95g/habana-express-api.git
+git clone https://github.com/tu-usuario/habana-express-api.git
 cd habana-express-api
 npm install
 
-2. Variables de Entorno (.env)
-DATABASE_URL="mysql://root:root@localhost:3306/habana_express_store"
-PORT=4000
-JWT_SECRET="TU_SECRETO_2026"
+3. Configuraci¢n de Entorno (.env)
+Crea un archivo .env en la ra°z:
 
-3. Base de Datos (Seed)
-# Crear tablas y poblar con datos de prueba
+DATABASE_URL="mysql://user:pass@localhost:3306/habana_express_store"
+PORT=4000
+JWT_SECRET="TU_SECRETO_SEGURO"
+
+4. Base de Datos
+Inicializa el esquema y carga los datos de prueba (Admin, Seller, Storekeeper):
+
 npx prisma db push
 node prisma/seed.js
 
-Seed Info: Crea Admin (50000001), Seller (50000002) y Storekeeper (50000003) con pass 123456.
-
-4. Ejecutar
+5. Iniciar Servidor
+# Modo Desarrollo (con nodemon)
 npm run dev
 
-?? Uso de la API
-Accede al Playground en: http://localhost:4000/graphql
-Ejemplo: Obtener Reporte Anual
+# Modo Producci¢n
+npm start
 
+Accede al Playground de GraphQL en: http://localhost:4000/graphql
+
+?? Comandos del Bot (Telegram)
+Una vez configurado el telegram_bot_token en la base de datos:
+Comando	Descripci¢n
+/monthly	Genera el Estado de Resultados del Mes actual (Ingresos vs Gastos vs ROI).
+/yearly	Genera el Reporte Anual con desglose mes a mes.
+/help	Muestra la lista de comandos disponibles.
+
+?? Ejemplo de Uso (GraphQL)
+Registrar una Venta
+
+mutation {
+  createSale(
+    sellerId: 2,
+    exchange_rate: 320.00,
+    total_cup: 64000.00,
+    buyer_phone: "55555555",
+    payment_method: cash,
+    items: [
+      { productId: 1, quantity: 1 }
+    ]
+  ) {
+    id_sale
+    total_cup
+    sale_products {
+      product {
+        name
+      }
+    }
+  }
+}
+
+Consultar Reporte Financiero Anual
 query {
   annualReport {
     year
@@ -405,24 +426,9 @@ query {
   }
 }
 
-?? Estructura del Proyecto
-src/
-√ƒƒ services/       # ?? L¢gica Financiera (C†lculos matem†ticos)
-≥   ¿ƒƒ finance.js
-√ƒƒ auth.js         # Seguridad (JWT & Hash)
-√ƒƒ index.js        # Entry point (Express + Apollo)
-√ƒƒ resolvers.js    # Controladores GraphQL
-√ƒƒ schema.js       # Definiciones de Tipos (TypeDefs)
-¿ƒƒ telegram.js     # ?? L¢gica del Bot (Comandos y Notificaciones)
-prisma/
-√ƒƒ schema.prisma   # Modelado de Base de Datos
-¿ƒƒ seed.js         # Datos de prueba
-
-<br>
 <div align="center">
-<hr>
-<p>Desarrollado con ?? para <b>Habana Express Store</b></p>
-<p><b>Gabry95g</b> &bull; 2026 &bull; Licencia ISC</p>
+<p>Desarrollado para <b>Habana Express Store</b></p>
+<p>2026 &bull; Licencia ISC</p>
 </div>
 
 ============================================
@@ -1038,18 +1044,23 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import cors from 'cors'; // <--- IMPORTANTE
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Crear carpeta uploads si no existe
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
 const app = express();
+
+// üî• CORRECCI√ìN: CORS DEBE IR AQU√ç, AL PRINCIPIO DE TODO
+app.use(cors()); 
 
 // --- MULTER CONFIG ---
 const storage = multer.diskStorage({
@@ -1071,13 +1082,16 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter });
 
+// Servir archivos est√°ticos
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
+// Endpoint de subida
 app.post('/api/upload', upload.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
     const protocol = req.protocol;
     const host = req.get('host');
+    // Construir URL completa
     const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     res.status(200).json({ message: 'Image uploaded.', url: fileUrl });
   } catch (error) {
@@ -1110,7 +1124,7 @@ async function startServer() {
     console.log(`üöÄ Server ready at http://localhost:4000${server.graphqlPath}`);
     console.log(`üìÇ Upload endpoint ready at http://localhost:4000/api/upload`);
     
-    // 4. Init Telegram (Silent start, success log inside)
+    // 4. Init Telegram
     initTelegramBot();
   });
 }
@@ -1128,27 +1142,42 @@ import { notifySale, notifyReturn, notifyStockDepletion } from './telegram.js';
 const prisma = new PrismaClient();
 
 /* üõ°Ô∏è --- SECURITY GUARDS --- üõ°Ô∏è */
+
 const requireAuth = (user) => {
   if (!user) throw new Error('‚õî Authorization required.');
 };
+
+// 1. Admin Only
 const requireAdmin = (user) => {
   requireAuth(user);
-  if (user.role !== 'admin') throw new Error('‚õî Access Denied: Admin role required.');
+  if (user.role !== 'admin') {
+    throw new Error('‚õî Access Denied: Admin role required.');
+  }
 };
+
+// 2. Storekeeper or Admin (Admin is allowed)
 const requireStorekeeper = (user) => {
   requireAuth(user);
-  if (user.role !== 'admin' && user.role !== 'storekeeper') throw new Error('‚õî Access Denied: Storekeeper required.');
+  if (user.role === 'admin') return; // ‚úÖ Admin Bypass
+  if (user.role !== 'storekeeper') {
+    throw new Error('‚õî Access Denied: Storekeeper role required.');
+  }
 };
+
+// 3. Seller or Admin (Admin is allowed)
 const requireSeller = (user) => {
   requireAuth(user);
-  if (user.role !== 'admin' && user.role !== 'seller') throw new Error('‚õî Access Denied: Seller required.');
+  if (user.role === 'admin') return; // ‚úÖ Admin Bypass
+  if (user.role !== 'seller') {
+    throw new Error('‚õî Access Denied: Seller role required.');
+  }
 };
 
 /* üöÄ --- RESOLVERS --- üöÄ */
 
 export const resolvers = {
   Query: {
-    // Users
+    // --- USERS ---
     users: (_, __, { user }) => {
       requireAdmin(user);
       return prisma.users.findMany({ include: { seller_products: true, sales: true } });
@@ -1158,9 +1187,10 @@ export const resolvers = {
       return prisma.users.findUnique({ where: { id_user }, include: { seller_products: true, sales: true } });
     },
 
-    // Products
+    // --- PRODUCTS ---
     products: (_, __, { user }) => {
       requireAuth(user);
+      // Todos los usuarios autenticados pueden ver productos activos
       return prisma.products.findMany({ 
         where: { active: true }, 
         include: { 
@@ -1181,41 +1211,44 @@ export const resolvers = {
       });
     },
 
-    // Categories
+    // --- CATEGORIES ---
     categories: (_, __, { user }) => {
       requireAuth(user);
       return prisma.categories.findMany({ include: { product_categories: true } });
     },
 
-    // Sales & Returns
+    // --- SALES & RETURNS ---
     sales: (_, __, { user }) => {
-      requireStorekeeper(user); 
+      requireStorekeeper(user); // Admin tambi√©n accede aqu√≠ por el Bypass
       return prisma.sales.findMany({ include: { sale_products: { include: { product: true } }, seller: true } });
     },
     sale: (_, { id_sale }, { user }) => {
       requireAuth(user); 
+      // Permitimos acceso general autenticado, el frontend debe filtrar si es necesario
       return prisma.sales.findUnique({ where: { id_sale }, include: { sale_products: { include: { product: true } }, seller: true } });
     },
     returns: (_, __, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       return prisma.returns.findMany({ include: { product: true, sale: true } });
     },
 
-    // Logistics & Inventory
+    // --- LOGISTICS & INVENTORY ---
     shipments: (_, __, { user }) => {
       requireStorekeeper(user);
       return prisma.shipments.findMany();
     },
     sellerProducts: (_, { sellerId }, { user }) => {
       requireAuth(user);
-      let targetId = user.role === 'seller' ? user.id_user : sellerId;
+      // L√≥gica: Si soy Admin/Storekeeper uso el ID solicitado. Si soy Seller, forzamos mi propio ID.
+      let targetId = (user.role === 'admin' || user.role === 'storekeeper') ? sellerId : user.id_user;
+      
       return prisma.seller_products.findMany({
         where: { id_seller: targetId },
         include: { seller: true, product: true },
       });
     },
 
-    // Config & Reports
+    // --- CONFIG & REPORTS ---
     systemConfiguration: (_, __, { user }) => {
       requireAuth(user); 
       return prisma.system_configuration.findMany();
@@ -1229,13 +1262,13 @@ export const resolvers = {
       return await getAnnualReport();
     },
     topSellers: async (_, { period }, { user }) => {
-      requireAuth(user);
+      requireAuth(user); // Admin y Vendedores pueden ver el ranking
       return await calculateTopSellers(period);
     },
   },
 
   Mutation: {
-    // Auth
+    // --- AUTH ---
     login: async (_, { phone, password }) => {
       const user = await prisma.users.findUnique({ where: { phone } });
       if (!user) throw new Error('User not found');
@@ -1254,20 +1287,20 @@ export const resolvers = {
       return prisma.users.create({ data: { ...input, password_hash: hashedPassword } });
     },
 
-    // Config
+    // --- CONFIGURATION ---
     updateSystemConfiguration: async (_, { id_config, input }, { user }) => {
       requireAdmin(user);
       return prisma.system_configuration.update({ where: { id_config }, data: input });
     },
 
-    // Products Management
+    // --- PRODUCTS MANAGEMENT ---
     createCategory: (_, { name }, { user }) => {
        requireStorekeeper(user);
        return prisma.categories.create({ data: { name } });
     },
 
     createProduct: (_, { input }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       
       const { categoryIds, ...productData } = input;
       
@@ -1279,6 +1312,7 @@ export const resolvers = {
          finalSku = `HEX-${year}-${randomSuffix}`;
       }
 
+      // L√≥gica: Si entra stock inicial > 0, se activa autom√°ticamente
       const isActive = productData.stock > 0 ? true : (productData.active ?? false);
 
       return prisma.products.create({ 
@@ -1301,11 +1335,11 @@ export const resolvers = {
     },
 
     updateProduct: async (_, { id_product, input }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       
       const { categoryIds, ...dataToUpdate } = input;
 
-      // Reactive Stock Logic
+      // L√≥gica Reactiva de Stock
       if (dataToUpdate.stock !== undefined) {
         if (dataToUpdate.stock > 0) {
           dataToUpdate.active = true;
@@ -1314,14 +1348,14 @@ export const resolvers = {
         }
       }
 
-      // Update with relation handling
+      // Actualizaci√≥n con manejo de relaciones
       const prismaUpdateArgs = {
         where: { id_product },
         data: {
             ...dataToUpdate,
             ...(categoryIds && {
                 product_categories: {
-                    deleteMany: {},
+                    deleteMany: {}, // Borramos relaciones anteriores
                     create: categoryIds.map(id => ({
                         category: { connect: { id_category: id } }
                     }))
@@ -1337,7 +1371,7 @@ export const resolvers = {
     },
 
     deleteProduct: async (_, { id_product }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
       try {
         return await prisma.products.delete({ where: { id_product } });
       } catch (error) {
@@ -1346,7 +1380,8 @@ export const resolvers = {
     },
 
     assignProductToSeller: async (_, { sellerId, productId, quantity }, { user }) => {
-      requireStorekeeper(user);
+      requireStorekeeper(user); 
+      // Verificamos si ya existe asignaci√≥n
       const existing = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
       
       if (existing) {
@@ -1363,12 +1398,18 @@ export const resolvers = {
       }
     },
 
-    // Sales Logic
+    // --- SALES LOGIC ---
     createSale: async (_, { sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes, items }, { user }) => {
-      requireSeller(user);
-      if (user.role === 'seller' && user.id_user !== sellerId) throw new Error('Forbidden: Cannot sell for another user.');
+      requireSeller(user); // Pasa Admin y Seller
 
-      // 1. Stock Validation
+      // Validaci√≥n de Identidad: El Admin puede vender por cualquiera. El Seller solo por s√≠ mismo.
+      if (user.role !== 'admin') {
+        if (user.id_user !== sellerId) {
+           throw new Error('Forbidden: Cannot sell for another user.');
+        }
+      }
+
+      // 1. Validaci√≥n de Stock Global
       for (const item of items) {
         const product = await prisma.products.findUnique({ where: { id_product: item.productId } });
         if (!product) throw new Error(`Product ID ${item.productId} not found`);
@@ -1377,34 +1418,34 @@ export const resolvers = {
         }
       }
 
-      // 2. Create Sale Header
+      // 2. Crear Cabecera de Venta
       const sale = await prisma.sales.create({
         data: { id_seller: sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes },
       });
 
-      // 3. Process Items & Update Inventory
+      // 3. Procesar Items y Actualizar Inventario
       for (const { productId, quantity } of items) {
         await prisma.sale_products.create({
           data: { id_sale: sale.id_sale, id_product: productId, quantity },
         });
 
-        // Decrement Global Stock
+        // Decrementar Stock Global
         const updatedProduct = await prisma.products.update({
           where: { id_product: productId },
           data: { stock: { decrement: quantity } },
         });
 
-        // ‚ú® Check for Depletion (Alert Admin)
+        // ‚ú® Verificar Agotamiento (Depletion)
         if (updatedProduct.stock <= 0) {
           await prisma.products.update({
             where: { id_product: productId },
             data: { active: false }
           });
-          // Async notification
+          // Notificaci√≥n as√≠ncrona a Telegram
           notifyStockDepletion(updatedProduct).catch(e => console.error(e));
         }
 
-        // Decrement Seller's Assigned Stock
+        // Decrementar Stock Asignado al Vendedor (Si existe)
         const assigned = await prisma.seller_products.findFirst({
           where: { id_seller: sellerId, id_product: productId },
         });
@@ -1416,7 +1457,7 @@ export const resolvers = {
         }
       }
 
-      // 4. Return Data & Notify
+      // 4. Retornar Datos y Notificar
       const saleResult = await prisma.sales.findUnique({
         where: { id_sale: sale.id_sale },
         include: { sale_products: { include: { product: true } }, seller: true },
@@ -1431,29 +1472,29 @@ export const resolvers = {
       return saleResult;
     },
 
-    // Returns Logic
+    // --- RETURNS LOGIC ---
     createReturn: async (_, args, { user }) => {
        requireStorekeeper(user); 
        const { saleId, productId, quantity, loss_usd, reason } = args;
        
-       // Record Return
+       // Registrar Devoluci√≥n
        const ret = await prisma.returns.create({
          data: { id_sale: saleId, id_product: productId, quantity, loss_usd, reason },
          include: { product: true, sale: true }
        });
        
-       // Restore Stock
+       // Restaurar Stock Global
        const prod = await prisma.products.update({
          where: { id_product: productId },
          data: { stock: { increment: quantity } }
        });
 
-       // Reactivate if needed
+       // Reactivar producto si estaba oculto
        if (!prod.active && prod.stock > 0) {
          await prisma.products.update({ where: { id_product: productId }, data: { active: true } });
        }
 
-       // Notify
+       // Notificar a Telegram
        try {
          await notifyReturn(ret);
        } catch (e) {
@@ -1463,14 +1504,14 @@ export const resolvers = {
        return ret;
     },
 
-    // Logistics
+    // --- LOGISTICS ---
     createShipment: (_, args, { user }) => { 
-      requireAdmin(user); 
+      requireAdmin(user); // Solo Admin puede gestionar costos de importaci√≥n
       return prisma.shipments.create({ data: args }); 
     },
   },
 
-  // Field Resolvers
+  // Field Resolvers (Resoluci√≥n de campos anidados)
   SaleProduct: { 
     product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }) 
   },
@@ -1509,11 +1550,16 @@ export const typeDefs = gql`
     logo_url: String
     description: String
     seller_commission_percentage: Float!
-    # ‚úÇÔ∏è Weekly Eliminado
+    
+    # --- REPORTES Y TIEMPOS ---
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
     annual_report_time: String
+    
+    # ‚úÖ NUEVO CAMPO AGREGADO
+    exchange_rate_sync_time: String
+    
     default_exchange_rate: Float!
     telegram_bot_token: String!
     created_at: String
@@ -1596,7 +1642,7 @@ export const typeDefs = gql`
     quantity: Int!
     return_date: String
     loss_usd: Float!
-    reason: String # ‚ú® Renombrado
+    reason: String
     product: Product!
     sale: Sale!
   }
@@ -1624,8 +1670,8 @@ export const typeDefs = gql`
     id_user: Int!
     name: String!
     photo_url: String
-    total_sales_usd: Float! # Total vendido convertido a USD
-    items_sold: Int!        # Cantidad de productos vendidos
+    total_sales_usd: Float!
+    items_sold: Int!
   }
 
   # --- REPORT TYPES ---
@@ -1698,11 +1744,16 @@ export const typeDefs = gql`
     logo_url: String
     description: String
     seller_commission_percentage: Float
-    # ‚úÇÔ∏è Weekly Eliminado
+    
+    # --- REPORTES Y TIEMPOS ---
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
     annual_report_time: String
+    
+    # ‚úÖ NUEVO CAMPO AGREGADO EN INPUT TAMBI√âN
+    exchange_rate_sync_time: String
+    
     default_exchange_rate: Float
     telegram_bot_token: String
     active: Boolean
@@ -1752,7 +1803,6 @@ export const typeDefs = gql`
       items: [SaleItemInput!]!
     ): Sale
     
-    # ‚ú® Cambiado notes por reason
     createReturn(saleId: Int!, productId: Int!, quantity: Int!, loss_usd: Float!, reason: String): Return
     
     createShipment(

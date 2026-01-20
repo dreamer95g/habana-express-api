@@ -11,6 +11,12 @@ export const typeDefs = gql`
     cash
     transfer
   }
+  
+  # ✅ NUEVO ENUM AGREGADO
+  enum SaleStatus {
+    COMPLETED
+    CANCELLED
+  }
 
   type SystemConfiguration {
     id_config: Int!
@@ -20,16 +26,11 @@ export const typeDefs = gql`
     logo_url: String
     description: String
     seller_commission_percentage: Float!
-    
-    # --- REPORTES Y TIEMPOS ---
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
     annual_report_time: String
-    
-    # ✅ NUEVO CAMPO AGREGADO
     exchange_rate_sync_time: String
-    
     default_exchange_rate: Float!
     telegram_bot_token: String!
     created_at: String
@@ -95,6 +96,7 @@ export const typeDefs = gql`
     buyer_phone: String!
     notes: String
     payment_method: PaymentMethod!
+    status: SaleStatus!  # ✅ CAMPO NUEVO
     seller: User!
     sale_products: [SaleProduct]
     returns: [Return]
@@ -105,6 +107,8 @@ export const typeDefs = gql`
     quantity: Int!
     sale: Sale!
     product: Product!
+    # Agregamos acceso directo a IDs por comodidad
+    id_product: Int 
   }
 
   type Return {
@@ -128,8 +132,6 @@ export const typeDefs = gql`
     notes: String
   }
 
-
-
   type DashboardStats {
     exchangeRate: Float!
     activeProductsCount: Int!
@@ -152,8 +154,6 @@ export const typeDefs = gql`
     items_sold: Int!
   }
 
-  # --- REPORT TYPES ---
-  
   type MonthlyReport {
     month: Int!
     year: Int!
@@ -187,25 +187,32 @@ export const typeDefs = gql`
     role: Role!
   }
 
+ input UpdateSaleInput {
+    buyer_phone: String
+    payment_method: PaymentMethod
+    total_cup: Float
+    exchange_rate: Float
+    notes: String
+  }
   
   input UpdateShipmentInput {
-  agency_name: String
-  shipment_date: String
-  shipping_cost_usd: Float
-  merchandise_cost_usd: Float
-  customs_fee_cup: Float
-  exchange_rate: Float
-  notes: String
-}
+    agency_name: String
+    shipment_date: String
+    shipping_cost_usd: Float
+    merchandise_cost_usd: Float
+    customs_fee_cup: Float
+    exchange_rate: Float
+    notes: String
+  }
 
   input UpdateUserInput {
     name: String
     phone: String
     email: String
     photo_url: String
-    password: String      # Opcional: Solo si quiere cambiarla
+    password: String      
     telegram_chat_id: String
-    role: Role            # Opcional: Solo Admin podrá usarlo
+    role: Role            
     active: Boolean
   }
 
@@ -244,16 +251,11 @@ export const typeDefs = gql`
     logo_url: String
     description: String
     seller_commission_percentage: Float
-    
-    # --- REPORTES Y TIEMPOS ---
     monthly_report_day: Int
     monthly_report_time: String
     annual_report_day: Int
     annual_report_time: String
-    
-    # ✅ NUEVO CAMPO AGREGADO EN INPUT TAMBIÉN
     exchange_rate_sync_time: String
-    
     default_exchange_rate: Float
     telegram_bot_token: String
     active: Boolean
@@ -267,11 +269,11 @@ export const typeDefs = gql`
   # --- QUERY & MUTATION ---
 
   type Query {
-     me: User
+    me: User
     systemConfiguration: [SystemConfiguration]
     users: [User]
     user(id_user: Int!): User
-    products: [Product]
+    products(active: Boolean): [Product] 
     product(id_product: Int!): Product
     categories: [Category]
     sales: [Sale]
@@ -279,6 +281,7 @@ export const typeDefs = gql`
     returns: [Return]
     shipments: [Shipment]
     sellerProducts(sellerId: Int!): [SellerProduct]
+    
     monthlyReport: MonthlyReport
     annualReport: AnnualReport
     topSellers(period: String!): [TopSeller]
@@ -291,15 +294,17 @@ export const typeDefs = gql`
     createUser(input: CreateUserInput!): User
     updateUser(id_user: Int!, input: UpdateUserInput!): User
     deleteUser(id_user: Int!): User
-    createCategory(name: String!): Category 
 
+    createCategory(name: String!): Category 
     updateCategory(id_category: Int!, name: String!): Category
     deleteCategory(id_category: Int!): Category
 
     createProduct(input: CreateProductInput!): Product
     updateProduct(id_product: Int!, input: UpdateProductInput!): Product
     deleteProduct(id_product: Int!): Product
+    
     assignProductToSeller(sellerId: Int!, productId: Int!, quantity: Int!): SellerProduct
+    returnProductFromSeller(sellerId: Int!, productId: Int!, quantity: Int!): SellerProduct
     
     createSale(
       sellerId: Int!,
@@ -311,7 +316,13 @@ export const typeDefs = gql`
       items: [SaleItemInput!]!
     ): Sale
     
-    createReturn(saleId: Int!, productId: Int!, quantity: Int!, loss_usd: Float!, reason: String): Return
+    updateSale(id_sale: Int!, input: UpdateSaleInput!): Sale
+    
+    # ✅ MUTACIÓN CAMBIADA (Antes era deleteSale)
+    cancelSale(id_sale: Int!): Sale
+    
+    # ✅ MUTACIÓN ACTUALIZADA (parametro returnToStock)
+    createReturn(saleId: Int!, productId: Int!, quantity: Int!, reason: String, returnToStock: Boolean!): Return
     
     createShipment(
       agency_name: String!,
@@ -325,9 +336,8 @@ export const typeDefs = gql`
 
     updateShipment(id_shipment: Int!, input: UpdateShipmentInput!): Shipment 
     deleteShipment(id_shipment: Int!): Shipment
-
-    
     
     updateSystemConfiguration(id_config: Int!, input: UpdateSystemConfigurationInput!): SystemConfiguration
+    triggerPriceSync: Boolean
   }
 `;

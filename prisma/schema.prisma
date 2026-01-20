@@ -84,6 +84,7 @@ model product_categories {
   @@index([id_product], map: "product_categories_id_product_fkey")
 }
 
+
 model sales {
   id_sale        Int             @id @default(autoincrement())
   sale_date      DateTime        @default(now())
@@ -92,6 +93,10 @@ model sales {
   buyer_phone    String
   notes          String?
   payment_method PaymentMethod
+  
+  // ✨ NUEVO CAMPO
+  status         SaleStatus      @default(COMPLETED)
+
   id_seller      Int
   returns        returns[]
   sale_products  sale_products[]
@@ -99,6 +104,7 @@ model sales {
 
   @@index([id_seller], map: "sales_id_seller_fkey")
 }
+
 
 model sale_products {
   id_sale_product Int      @id @default(autoincrement())
@@ -160,4 +166,9 @@ enum Role {
 enum PaymentMethod {
   cash
   transfer
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
 }

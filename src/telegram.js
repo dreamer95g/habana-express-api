@@ -363,6 +363,7 @@ ${productList}
 <b>(USD)</b> ${formatNumber(netProfitUSD)}
       `;
 
+      
       const sellerMsg = `
 💵 <b>VENTA REGISTRADA</b>
 ──────────────

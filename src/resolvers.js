@@ -426,7 +426,9 @@ export const resolvers = {
         
         if (updatedProduct.stock <= 0) {
             await prisma.products.update({ where: { id_product: productId }, data: { active: false } });
-        }
+         
+            try { await notifyStockDepletion(updatedProduct); } catch (e) { console.error(e); }
+          }
 
         // B. Restar Asignación del Vendedor
         const assignment = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
@@ -533,37 +535,34 @@ export const resolvers = {
           throw new Error("Cantidad inválida para esta venta.");
        }
 
-       // 3. Obtener info del producto para saber su COSTO
+       // 3. Obtener info del producto para costo
        const productInfo = await prisma.products.findUnique({ 
            where: { id_product: productId } 
        });
 
-       // --- 🧠 CÁLCULO FINANCIERO ---
        let calculatedLoss = 0;
-
-       if (returnToStock) {
-           // CASO A: El producto sirve. 
-           // Recuperamos el activo, así que la pérdida contable es 0.
-           calculatedLoss = 0;
-       } else {
-           // CASO B: El producto está roto (Merma).
-           // La pérdida es el Costo de Compra * Cantidad devuelta.
-           // (Perdemos la inversión que hicimos en ese producto).
+       if (!returnToStock) {
            calculatedLoss = Number(productInfo.purchase_price) * quantity;
        }
 
        // 4. Transacción en Base de Datos
-       return await prisma.$transaction(async (tx) => {
-           // A. Crear Registro Devolución con el loss_usd calculado
+       const resultReturn = await prisma.$transaction(async (tx) => {
+           // A. Crear Registro Devolución
            const ret = await tx.returns.create({
              data: { 
                  id_sale: saleId, 
                  id_product: productId, 
                  quantity, 
-                 loss_usd: calculatedLoss, // <--- AQUÍ GUARDAMOS EL VALOR REAL
+                 loss_usd: calculatedLoss,
                  reason 
              },
-             include: { product: true, sale: true }
+             // 👇 CAMBIO IMPORTANTE: Incluimos al Vendedor (seller) dentro de la venta (sale)
+             include: { 
+                 product: true, 
+                 sale: { 
+                     include: { seller: true } 
+                 } 
+             }
            });
 
            // B. Si returnToStock es TRUE, devolvemos al Global
@@ -572,14 +571,22 @@ export const resolvers = {
                  where: { id_product: productId },
                  data: { 
                      stock: { increment: quantity },
-                     active: true // Reactivamos por si estaba en 0
+                     active: true 
                  }
                });
            }
-           // Si es FALSE, no sumamos stock. El producto "desaparece" (se considera basura/merma).
 
            return ret;
        });
+
+       // 👇 NUEVO: Llamamos a la notificación pasando el booleano returnToStock
+       try { 
+           await notifyReturn(resultReturn, returnToStock); 
+       } catch (e) { 
+           console.error("Error enviando notificación Telegram:", e); 
+       }
+
+       return resultReturn;
     },
 
     // --- SHIPMENTS ---

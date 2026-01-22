@@ -4,18 +4,53 @@ import { getMonthlyReport, getAnnualReport } from './services/finance.js';
 
 const prisma = new PrismaClient();
 let bot = null;
-let isBotRunning = false; 
 
-// --- 🛠️ FORMAT HELPERS ---
-const formatNumber = (amount) => {
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0
+// --- 🛠️ FORMAT HELPERS (Estilo Ejecutivo) ---
+
+const formatCurrency = (amount, currency = 'USD') => {
+  const val = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: 2
   }).format(amount);
+  return `<code>${val}</code>`; // Envoltorio code para Telegram
 };
 
+const formatNumber = (amount) => {
+  return `<code>${new Intl.NumberFormat('en-US').format(amount)}</code>`;
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return '<code>N/A</code>';
+  const date = new Date(dateString);
+  const str = date.toLocaleDateString('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+  return `<code>${str}</code>`;
+};
+
+const formatDateTime = (dateString) => {
+    if (!dateString) return '<code>N/A</code>';
+    const date = new Date(dateString);
+    const str = date.toLocaleString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true
+    });
+    return `<code>${str}</code>`;
+  };
+
+const addDays = (date, days) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+
+const separator = "──────────────";
+
 const safeReply = async (chatId, message) => {
-    if (!bot) return; 
+    if (!bot || !chatId) return; 
     try {
         await bot.telegram.sendMessage(chatId, message, { parse_mode: 'HTML' });
     } catch (error) {
@@ -23,244 +58,125 @@ const safeReply = async (chatId, message) => {
     }
 };
 
-// --- 🎮 COMMANDS SETUP ---
+// --- 🎮 COMANDOS Y SEGURIDAD ---
 const setupCommands = () => {
-    const helpMsg = `
-👋 <b>Habana Express Bot</b>
+    
+    // COMANDO START: Lógica inteligente según rol
+    bot.start(async (ctx) => {
+        const chatId = ctx.chat.id.toString();
+        
+        // Buscamos quién es este usuario en la DB
+        const user = await prisma.users.findFirst({
+            where: { telegram_chat_id: chatId }
+        });
 
-📋 <b>Comandos Disponibles:</b>
+        // 🅰️ CASO ADMIN: Menú completo
+        if (user && user.role === 'admin') {
+            const adminMsg = `
+👋 <b>Hola Admin ${user.name}</b>
 
-📊 /monthly - Reporte del Mes
-📈 /yearly - Reporte del Año
+🛠️ <b>PANEL DE CONTROL:</b>
+📊 /monthly - Reporte Mensual
+📈 /yearly - Reporte Anual
 ❓ /help - Ayuda
-    `;
-
-    bot.start((ctx) => ctx.reply(helpMsg, { parse_mode: 'HTML' }));
-    bot.help((ctx) => ctx.reply(helpMsg, { parse_mode: 'HTML' }));
-
-    bot.command('monthly', async (ctx) => {
-        try {
-            ctx.reply("⏳ <i>Generando reporte mensual...</i>", { parse_mode: 'HTML' });
-            const data = await getMonthlyReport();
-            const roi = data.investment > 0 ? ((data.netProfit / data.investment) * 100).toFixed(1) : 0;
-            
-            const msg = `
-📅 <b>REPORTE MENSUAL</b> | ${data.month}/${data.year}
-──────────────
-💰 <b>Ingresos Totales</b>
-<b>(USD)</b> ${formatNumber(data.income)}
-
-📉 <b>Inversión y Gastos</b>
-<b>(USD)</b> ${formatNumber(data.investment + data.returnLosses)}
-
-✅ <b>GANANCIA NETA</b>
-<b>(USD)</b> ${formatNumber(data.netProfit)}
-
-📊 <b>ROI:</b> ${roi}%
             `;
-            ctx.reply(msg, { parse_mode: 'HTML' });
-        } catch (e) {
-            console.error("Monthly Report Error:", e);
-            ctx.reply("❌ Error generando reporte.");
+            return ctx.reply(adminMsg, { parse_mode: 'HTML' });
         }
+
+        // 🅱️ CASO VENDEDOR O DESCONOCIDO: Solo mostrar ID
+        // Esto es útil para que el vendedor copie este ID y te lo pase para registrarlo
+        const publicMsg = `
+👋 <b>Bienvenido a Habana Express</b>
+
+🤖 <b>IDENTIFICACIÓN:</b>
+Para vincular tu cuenta, envía este código al administrador:
+
+🆔 <code>${chatId}</code>
+
+<i>Esperando autorización...</i>
+        `;
+        return ctx.reply(publicMsg, { parse_mode: 'HTML' });
     });
 
-    bot.command('yearly', async (ctx) => {
-        try {
-            ctx.reply("⏳ <i>Generando reporte anual...</i>", { parse_mode: 'HTML' });
-            const data = await getAnnualReport();
-            const roi = data.investment > 0 ? ((data.netProfit / data.investment) * 100).toFixed(1) : 0;
+    bot.help((ctx) => ctx.reply("Contacte al administrador para soporte.", { parse_mode: 'HTML' }));
 
-            const msg = `
-📈 <b>REPORTE ANUAL</b> | ${data.year}
-──────────────
-💰 <b>Ingresos Acumulados</b>
-<b>(USD)</b> ${formatNumber(data.income)}
+    // 🔒 MIDDLEWARE DE SEGURIDAD PARA REPORTES
+    // Función auxiliar para verificar si es admin antes de ejecutar
+    const verifyAdmin = async (ctx, next) => {
+        const chatId = ctx.chat.id.toString();
+        const user = await prisma.users.findFirst({ where: { telegram_chat_id: chatId } });
 
-📉 <b>Inversión Total</b>
-<b>(USD)</b> ${formatNumber(data.investment + data.returnLosses)}
-
-✅ <b>GANANCIA NETA</b>
-<b>(USD)</b> ${formatNumber(data.netProfit)}
-
-📊 <b>ROI Anual:</b> ${roi}%
-            `;
-            ctx.reply(msg, { parse_mode: 'HTML' });
-        } catch (e) {
-            console.error("Yearly Report Error:", e);
-            ctx.reply("❌ Error generando reporte.");
+        if (user && user.role === 'admin') {
+            return next();
+        } else {
+            return ctx.reply("⛔ <b>Acceso Denegado:</b> Comando solo para Administradores.", { parse_mode: 'HTML' });
         }
+    };
+
+    // 1. REPORTE MENSUAL (Protegido)
+    bot.command('monthly', async (ctx) => {
+        verifyAdmin(ctx, async () => {
+            try {
+                ctx.reply("⏳ <i>Calculando cierre mensual...</i>", { parse_mode: 'HTML' });
+                const data = await getMonthlyReport();
+                const roi = data.investment > 0 ? ((data.netProfit / data.investment) * 100).toFixed(1) : "0.0";
+                
+                const msg = `
+📊 <b>CIERRE MENSUAL</b> | ${data.month}/${data.year}
+🏢 <b>Habana Express Store</b>
+${separator}
+💰 <b>INGRESOS (Ventas):</b>
+${formatCurrency(data.income)}
+
+📉 <b>EGRESOS (Costo + Envíos):</b>
+${formatCurrency(data.investment + data.returnLosses)}
+
+💎 <b>GANANCIA NETA:</b>
+${formatCurrency(data.netProfit)}
+
+📈 <b>ROI DEL MES:</b> <code>${roi}%</code>
+                `;
+                ctx.reply(msg, { parse_mode: 'HTML' });
+            } catch (e) {
+                console.error("Monthly Error:", e);
+                ctx.reply("❌ Error generando reporte.");
+            }
+        });
+    });
+
+    // 2. REPORTE ANUAL (Protegido)
+    bot.command('yearly', async (ctx) => {
+        verifyAdmin(ctx, async () => {
+            try {
+                ctx.reply("⏳ <i>Calculando cierre anual...</i>", { parse_mode: 'HTML' });
+                const data = await getAnnualReport();
+                const roi = data.investment > 0 ? ((data.netProfit / data.investment) * 100).toFixed(1) : "0.0";
+
+                const msg = `
+📈 <b>CIERRE ANUAL</b> | ${data.year}
+🏢 <b>Resumen Global</b>
+${separator}
+💰 <b>INGRESOS ACUMULADOS:</b>
+${formatCurrency(data.income)}
+
+📉 <b>INVERSIÓN TOTAL:</b>
+${formatCurrency(data.investment + data.returnLosses)}
+
+🏆 <b>GANANCIA NETA TOTAL:</b>
+${formatCurrency(data.netProfit)}
+
+📊 <b>ROI PROMEDIO:</b> <code>${roi}%</code>
+                `;
+                ctx.reply(msg, { parse_mode: 'HTML' });
+            } catch (e) {
+                console.error("Yearly Error:", e);
+                ctx.reply("❌ Error generando reporte.");
+            }
+        });
     });
 };
 
-
-
-
-
 // --- 🚀 INITIALIZATION ---
-// export const initTelegramBot = async () => {
-//   try {
-//       const config = await prisma.system_configuration.findFirst();
-//       if (!config || !config.telegram_bot_token) {
-//         console.warn("⚠️ Telegram Bot Token not configured.");
-//         return;
-//       }
-
-//       bot = new Telegraf(config.telegram_bot_token);
-      
-      
-//       // Global Error Handler
-//       bot.catch((err) => console.error(`❌ Telegram Runtime Error:`, err));
-      
-//       setupCommands();
-      
-//       // Active Flag ON immediately
-//       isBotRunning = true; 
-
-//       // Silent Launch in Background
-//      await bot.launch("hola")
-//     //   console.log("🤖 ✅ Bot connected to Telegram");
-//         .then(async () => {
-//             console.log("🤖 ✅ Bot connected to Telegram");
-            
-//             // ✨ NOTIFY ADMINS ON STARTUP
-//             const startMsg = `
-// 🟢 <b>SISTEMA EN LÍNEA</b>
-// El servidor se ha reiniciado correctamente.
-
-// 📋 <b>Comandos Disponibles:</b>
-
-// 📊 /monthly - Reporte del Mes
-// 📈 /yearly - Reporte del Año
-// ❓ /help - Ayuda
-//             `;
-//             const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
-//             admins.forEach(u => safeReply(u.telegram_chat_id, startMsg));
-//         })
-//         .catch((err) => {
-//             console.error("❌ Telegram Connection Warning:", err.message);
-//         });
-
-//       // Graceful Stop
-//       process.once('SIGINT', () => bot.stop('SIGINT'));
-//       process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-//   } catch (error) {
-//       console.error("❌ Critical Error initializing Bot:", error.message);
-//       isBotRunning = false;
-//       bot = null;
-//   }
-// };
-
-
-// export const initTelegramBot = async () => {
-//   try {
-//     const config = await prisma.system_configuration.findFirst();
-
-//     if (!config || !config.telegram_bot_token) {
-//       console.warn("⚠️ Telegram Bot Token not configured.");
-//       return;
-//     }
-
-//     bot = new Telegraf(config.telegram_bot_token);
-
-//     bot.catch((err) => console.error("❌ Telegram Runtime Error:", err));
-
-//     setupCommands();
-
-//     console.log("⏳ Iniciando bot de Telegram...");
-
-//     // 🔥 ESTA ES LA CLAVE: usar await
-//     await bot.launch();
-
-//     console.log("🤖 Bot conectado a Telegram");
-//     isBotRunning = true;
-
-//     // 📢 Mensaje inicial a admins
-//     const startMsg = `
-// 🟢 <b>SISTEMA EN LÍNEA</b>
-// El servidor se ha reiniciado correctamente.
-
-// 📋 <b>Comandos Disponibles:</b>
-
-// 📊 /monthly - Reporte del Mes
-// 📈 /yearly - Reporte del Año
-// ❓ /help - Ayuda
-//     `;
-
-//     const admins = await prisma.users.findMany({
-//       where: { role: 'admin', telegram_chat_id: { not: null } }
-//     });
-
-//     for (const u of admins) {
-//       await safeReply(u.telegram_chat_id, startMsg);
-//     }
-
-//     process.once('SIGINT', () => bot.stop('SIGINT'));
-//     process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-//   } catch (error) {
-//     console.error("❌ Critical Error initializing Bot:", error.message);
-//     isBotRunning = false;
-//     bot = null;
-//   }
-// };
-
-
-// export const initTelegramBot = async () => {
-//   try {
-//     const config = await prisma.system_configuration.findFirst();
-
-//     if (!config || !config.telegram_bot_token) {
-//       console.warn("⚠️ Telegram Bot Token not configured.");
-//       return;
-//     }
-
-//     bot = new Telegraf(config.telegram_bot_token);
-
-//     bot.catch((err) => console.error("❌ Telegram Runtime Error:", err));
-
-//     setupCommands();
-
-//     console.log("⏳ Iniciando bot de Telegram...");
-
-//     // 🚀 Lanzar el bot SIN bloquear el event loop
-//     bot.launch()
-//       .then(async () => {
-//         console.log("🤖 Bot conectado a Telegram");
-
-//         const startMsg = `
-// 🟢 <b>SISTEMA EN LÍNEA</b>
-// El servidor se ha reiniciado correctamente.
-
-// 📋 <b>Comandos Disponibles:</b>
-
-// 📊 /monthly - Reporte del Mes
-// 📈 /yearly - Reporte del Año
-// ❓ /help - Ayuda
-//         `;
-
-//         const admins = await prisma.users.findMany({
-//           where: { role: 'admin', telegram_chat_id: { not: null } }
-//         });
-
-//         for (const u of admins) {
-//           await safeReply(u.telegram_chat_id, startMsg);
-//         }
-//       })
-//       .catch((err) => {
-//         console.error("❌ Error iniciando bot:", err.message);
-//       });
-
-//     // 🛑 Cierre elegante
-//     process.once('SIGINT', () => bot.stop('SIGINT'));
-//     process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-//   } catch (error) {
-//     console.error("❌ Critical Error initializing Bot:", error.message);
-//   }
-// };
-
 export const initTelegramBot = async () => {
   try {
     const config = await prisma.system_configuration.findFirst();
@@ -279,38 +195,12 @@ export const initTelegramBot = async () => {
 
     setupCommands();
 
-    //console.log("⏳ Iniciando bot de Telegram...");
-
-    // 🚀 Lanzar sin await y forzando polling puro
     bot.launch({
       dropPendingUpdates: true,
-      polling: {
-        timeout: 30,
-        limit: 100
-      }
+      polling: { timeout: 30, limit: 100 }
     });
 
     console.log("🤖 Telegram bot running 🚀");
-
-    // Mensaje inicial
-    const initMsg = `
-🤖 <b> Habana Express Bot 🚀 </b>
-    `;
-
-    const strHelp = `
-📋 <b>Comandos Disponibles:</b>
-📊 /monthly - Reporte del Mes
-📈 /yearly - Reporte del Año
-❓ /help - Ayuda`
-
-    const admins = await prisma.users.findMany({
-      where: { role: 'admin', telegram_chat_id: { not: null } }
-    });
-
-    for (const u of admins) {
-      await safeReply(u.telegram_chat_id, initMsg);
-      await safeReply(u.telegram_chat_id, strHelp);
-    }
 
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
@@ -321,117 +211,210 @@ export const initTelegramBot = async () => {
 };
 
 
+// --- 🔔 NOTIFICACIONES DEL SISTEMA ---
 
-
-// --- 🔔 NOTIFICATIONS ---
-
-// 1. NOTIFY NEW SALE
+// 1. NUEVA VENTA (Con Diezmo)
 export const notifySale = async (sale) => {
   if (!bot) return;
 
   try {
       const config = await prisma.system_configuration.findFirst();
-      const commissionPct = Number(config.seller_commission_percentage);
+      const commissionPct = config ? Number(config.seller_commission_percentage) : 0;
+
+      // Cálculos Básicos
       const exchangeRate = Number(sale.exchange_rate);
-      
-      const totalSaleUSD = Number(sale.total_cup) / exchangeRate;
+      const totalCUP = Number(sale.total_cup);
+      const totalUSD = exchangeRate > 0 ? totalCUP / exchangeRate : 0;
+
+      let itemsList = "";
       let totalProductCostUSD = 0;
-      let productList = "";
-      
+      const warrantyItems = []; 
+
       sale.sale_products.forEach(item => {
-          totalProductCostUSD += (Number(item.product.purchase_price) * item.quantity);
-          productList += `📦 ${item.product.name} (x${item.quantity})\n`;
+          const product = item.product;
+          itemsList += `▫️ <b>${item.quantity}x</b> ${product.name}\n`;
+          totalProductCostUSD += (Number(product.purchase_price) * item.quantity);
+
+          if (product.warranty === true) {
+              warrantyItems.push({
+                  name: product.name,
+                  sku: product.sku || 'S/N',
+                  quantity: item.quantity
+              });
+          }
       });
 
-      const commissionUSD = totalSaleUSD * (commissionPct / 100);
-      const netProfitUSD = totalSaleUSD - totalProductCostUSD - commissionUSD;
+      // 1. Cálculos de Ganancia
+      const commissionUSD = totalUSD * (commissionPct / 100);
+      const netProfitUSD = totalUSD - totalProductCostUSD - commissionUSD;
 
-      const totalSaleCUP = Number(sale.total_cup);
-      const netProfitCUP = netProfitUSD * exchangeRate;
+      // 🔴 CORRECCIÓN AQUÍ: Calculamos ROI (Ganancia / Costo) en vez de Margen (Ganancia / Venta)
+      const roiPercentage = totalProductCostUSD > 0 
+          ? (netProfitUSD / totalProductCostUSD) * 100 
+          : 0;
+
+      // Valores para el Vendedor
       const commissionCUP = commissionUSD * exchangeRate;
+      const cashToDeliverCUP = totalCUP - commissionCUP;
 
+      // ⛪ CÁLCULO DEL DIEZMO (10% de la Ganancia Neta)
+      const titheUSD = Math.max(0, netProfitUSD * 0.10);
+      const titheCUP = titheUSD * exchangeRate;
+
+      // 🅰️ MENSAJE ADMIN (Financiero Actualizado)
       const adminMsg = `
-💵 <b>NUEVA VENTA</b> | ${sale.seller.name}
-──────────────
-${productList}
-💰 <b>Ingreso Total</b>
-<b>(CUP)</b> ${formatNumber(totalSaleCUP)}
-<b>(USD)</b> ${formatNumber(totalSaleUSD)}
+💸 <b>NUEVA VENTA CONFIRMADA</b>
+🆔 <b>Ticket:</b> <code>#SALE-${sale.id_sale}</code>
+${separator}
+👤 <b>Vendedor:</b> ${sale.seller.name}
+📱 <b>Cliente:</b> <code>${sale.buyer_phone}</code>
 
-❇️ <b>Ganancia Neta</b>
-<b>(CUP)</b> ${formatNumber(netProfitCUP)}
-<b>(USD)</b> ${formatNumber(netProfitUSD)}
-      `;
+🛒 <b>CARRITO:</b>
+${itemsList}${separator}
+💵 <b>BALANCE FINANCIERO:</b>
+🟢 <b>Ingreso Total:</b> ${formatCurrency(totalUSD)}
+🔴 <b>Costo Merc.:</b> ${formatCurrency(totalProductCostUSD)}
+🤝 <b>Comisión:</b>     ${formatCurrency(commissionUSD)}
 
-      
-      const sellerMsg = `
-💵 <b>VENTA REGISTRADA</b>
-──────────────
-${productList}
-💸 <b>Tu Comisión:</b>
-<b>(CUP)</b> +${formatNumber(commissionCUP)}
-
-🔥 <i>¡Seguimos sumando!</i>
+🚀 <b>GANANCIA NETA:</b> ${formatCurrency(netProfitUSD)}
+📈 <b>Rentabilidad:</b>  <code>${roiPercentage.toFixed(1)}%</code>
+⛪ <b>DIEZMO (10%):</b>  ${formatCurrency(titheCUP, 'CUP')}
+💱 <b>Tasa Aplicada:</b> <code>${exchangeRate}</code>
       `;
 
       const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
-      admins.forEach(u => safeReply(u.telegram_chat_id, adminMsg));
-      
-      if (sale.seller.telegram_chat_id) {
-          safeReply(sale.seller.telegram_chat_id, sellerMsg);
+      for (const admin of admins) {
+          await safeReply(admin.telegram_chat_id, adminMsg);
       }
 
-  } catch (error) { console.error("Notify Sale Error:", error.message); }
+      // 🅱️ MENSAJE VENDEDOR (Motivacional - Igual que antes)
+      const sellerMsg = `
+💸 <b>¡EXCELENTE VENTA, ${sale.seller.name.toUpperCase()}!</b>
+📅 ${formatDateTime(sale.sale_date)}
+${separator}
+📦 <b>Has vendido:</b>
+${itemsList}${separator}
+💼 <b>CAJA (A Entregar):</b>
+${formatCurrency(cashToDeliverCUP, 'CUP')}
+
+💰 <b>TU COMISIÓN:</b>
+${formatCurrency(commissionCUP, 'CUP')} 🎉
+
+🚀 <i>¡Sigue así!</i>
+      `;
+
+      if (sale.seller && sale.seller.telegram_chat_id) {
+          await safeReply(sale.seller.telegram_chat_id, sellerMsg);
+      }
+
+      // 🅾️ GARANTÍA (Igual que antes)
+      if (warrantyItems.length > 0) {
+          const saleDate = new Date(sale.sale_date);
+          const expirationDate = addDays(saleDate, 7);
+          let warrantyList = "";
+          warrantyItems.forEach(p => {
+              warrantyList += `📦 <b>${p.name}</b>\n🔢 SKU: <code>${p.sku}</code>\n`;
+          });
+          const warrantyMsg = `
+📃 <b>CERTIFICADO DE GARANTÍA</b>
+🆔 <b>Ticket:</b> <code>#SALE-${sale.id_sale}</code>
+${separator}
+📅 <b>Emisión:</b> ${formatDate(saleDate)}
+⚠️ <b>VENCE:</b> ${formatDate(expirationDate)} (7 Días)
+📱 <b>Cliente:</b> <code>${sale.buyer_phone}</code>
+${separator}
+<b>PRODUCTOS CUBIERTOS:</b>
+${warrantyList}
+${separator}
+ℹ️ <i>Cubre defectos de fábrica. No humedad ni golpes.</i>
+          `;
+          for (const admin of admins) { await safeReply(admin.telegram_chat_id, warrantyMsg); }
+          if (sale.seller && sale.seller.telegram_chat_id) { await safeReply(sale.seller.telegram_chat_id, warrantyMsg); }
+      }
+
+  } catch (error) { 
+      console.error("Notify Sale Error:", error.message); 
+  }
+};
+// 2. GARANTÍA VENCIDA
+export const notifyWarrantyExpiration = async (sale, products) => {
+    if (!bot) return;
+
+    try {
+        let productList = "";
+        products.forEach(p => {
+             productList += `📦 ${p.name}\n   SKU: <code>${p.sku}</code>\n`;
+        });
+
+        // Mensaje para Admin
+        const msgAdmin = `
+🕒 <b>GARANTÍA VENCIDA</b> (7 Días)
+🆔 <b>Ticket:</b> <code>#SALE-${sale.id_sale}</code>
+${separator}
+📱 <b>Cliente:</b> <code>${sale.buyer_phone}</code>
+📅 <b>Venta:</b> ${formatDate(sale.sale_date)}
+
+<b>PRODUCTOS SIN COBERTURA:</b>
+${productList}
+✅ <b>Estado:</b> Caso Cerrado.
+        `;
+
+        // Mensaje para Vendedor
+        const msgSeller = `
+🕒 <b>AVISO: GARANTÍA EXPIRADA</b>
+El cliente <code>${sale.buyer_phone}</code> ya no tiene cobertura.
+${separator}
+<b>PRODUCTOS:</b>
+${productList}
+🚫 <i>No aceptar devoluciones de este ticket.</i>
+        `;
+
+        const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
+        admins.forEach(u => safeReply(u.telegram_chat_id, msgAdmin));
+
+        if (sale.seller && sale.seller.telegram_chat_id) {
+            await safeReply(sale.seller.telegram_chat_id, msgSeller);
+        }
+
+    } catch (e) { console.error("Warranty Exp Error:", e); }
 };
 
-// 2. NOTIFY STOCK DEPLETION (Strict Financial Calculation)
+// 3. STOCK AGOTADO (Con Análisis de Lote)
 export const notifyStockDepletion = async (product) => {
   if (!bot) return;
   try {
     const config = await prisma.system_configuration.findFirst();
     const commissionPct = config ? Number(config.seller_commission_percentage) : 0;
 
+    // Buscar historial de ventas para calcular rentabilidad real del lote
     const salesHistory = await prisma.sale_products.findMany({
         where: { id_product: product.id_product },
-        include: { sale: true }
+        include: { sale: true } // Necesario para saber tasa histórica si quisieras afinar
     });
 
     let totalQuantitySold = 0;
-    
-    // Calculate Total Quantity
-    salesHistory.forEach(item => {
-        totalQuantitySold += item.quantity;
-    });
+    salesHistory.forEach(item => { totalQuantitySold += item.quantity; });
 
-    // 1. Total Investment (Costo real de la mercancía)
     const purchasePrice = Number(product.purchase_price);
     const totalInvestmentUSD = purchasePrice * totalQuantitySold;
-
-    // 2. Revenue Calculation (Pricing Rule: Cost * 2)
-    // Assumption: Sales were made following the rule.
-    const totalRevenueUSD = totalInvestmentUSD * 2;
-
-    // 3. Commissions Paid
+    
+    // Estimación x2 (Precio venta estándar)
+    const totalRevenueUSD = totalInvestmentUSD * 2; 
     const totalCommissionsUSD = totalRevenueUSD * (commissionPct / 100);
-
-    // 4. Net Profit
     const netProfitUSD = totalRevenueUSD - totalInvestmentUSD - totalCommissionsUSD;
 
     const msg = `
-📉 <b>STOCK AGOTADO</b>
-Se vendieron todos los <b>${product.name}</b>
+⚡ <b>STOCK AGOTADO</b>
+📦 <b>Producto:</b> ${product.name}
+${separator}
+🏁 <b>RESUMEN DEL LOTE:</b>
+🔢 <b>Unidades Vendidas:</b> <code>${totalQuantitySold}</code>
+📉 <b>Inversión Total:</b> ${formatCurrency(totalInvestmentUSD)}
 
-📊 <b>Resumen del Lote:</b>
+🏆 <b>GANANCIA ESTIMADA:</b>
+${formatCurrency(netProfitUSD)}
 
-📦 <b>Unidades Vendidas:</b> ${totalQuantitySold}
-
-💰 <b>Costo de Inversión</b>
-<b>(USD)</b> ${formatNumber(totalInvestmentUSD)}
-<i>(${totalQuantitySold} unid. x $${formatNumber(purchasePrice)} costo)</i>
-
-✅ <b>Ganancia Neta</b>
-<b>(USD)</b> ${formatNumber(netProfitUSD)}
-<i>(Descontando comisiones)</i>
+⚠️ <i>Producto desactivado del catálogo automáticamente.</i>
     `;
 
     const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
@@ -440,63 +423,99 @@ Se vendieron todos los <b>${product.name}</b>
   } catch (error) { console.error("Notify Stock Error:", error.message); }
 };
 
-// 3. NOTIFY DAILY UPDATE (ADMIN)
+// 4. SINCRONIZACIÓN DIARIA (ADMIN)
 export const notifyDailyUpdate = async (newRate, productsCount) => {
     if (!bot) return;
     try {
         const msg = `
-🤖 <b>Sincronización Diaria Completada</b>
+🌐 <b>SINCRONIZACIÓN DIARIA</b>
+📅 ${formatDateTime(new Date())}
+${separator}
+🇺🇸 <b>TASA DE CAMBIO:</b>
+<code>1 USD = ${newRate} CUP</code>
 
-✅ <b>Nueva Tasa:</b> ${newRate} CUP
-📊 <b>Productos actualizados:</b> ${productsCount}
-📨 <b>Vendedores notificados.</b>
+🏷️ <b>CATÁLOGO ACTUALIZADO:</b>
+✅ <b>${productsCount}</b> Productos recalcularon su precio en CUP.
         `;
         const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
         admins.forEach(u => safeReply(u.telegram_chat_id, msg));
     } catch (e) { console.error(e); }
 };
 
-// 4. NOTIFY DAILY PRICES (SELLER)
+// 5. LISTA DE PRECIOS DIARIA (VENDEDOR)
 export const notifyDailyPrices = async (seller, newRate) => {
     if (!bot || !seller.telegram_chat_id) return;
     try {
         let msg = `
-🌅 <b>Buenos días, ${seller.name}</b>
-
-💱 <b>Tasa del día:</b> ${newRate} CUP
-📋 <b>Tus Productos Actualizados:</b>
+👋 <b> Hola </b> <b> ${seller.name} </b>
+💲 <b>LISTA DE PRECIOS DE HOY:</b>
+🗓️ <b>Fecha:</b> ${formatDate(new Date())}
+💵 <b>Tasa Base:</b> <code>${newRate} CUP</code>
+${separator}
+<pre>
+PRODUCTO         | STOCK | PRECIO CUP
+-----------------|-------|-----------
 `;
         seller.seller_products.forEach(sp => {
             const priceNow = Number(sp.product.purchase_price) * 2 * newRate;
-            msg += `
-📦 <b>${sp.product.name}</b>
-<b>(CUP)</b> ${formatNumber(priceNow)}
-🎒 Stock: ${sp.quantity}
-`;
+            // Truncar nombre a 16 chars
+            const shortName = sp.product.name.substring(0, 16).padEnd(16, ' ');
+            const stock = sp.quantity.toString().padStart(5, ' ');
+            // Formatear precio sin decimales y con comas
+            const priceStr = new Intl.NumberFormat('en-US').format(priceNow);
+            const price = priceStr.padStart(10, ' ');
+            
+            msg += `${shortName} | ${stock} | ${price}\n`;
         });
-        msg += `\n🚀 <i>¡Éxito en las ventas de hoy!</i>`;
+        msg += `</pre>
+${separator}
+💡 <i>Precios válidos hasta la próxima actualización.</i>`;
+        
         safeReply(seller.telegram_chat_id, msg);
     } catch (e) { console.error(e); }
 };
 
-// 5. NOTIFY RETURN
-export const notifyReturn = async (returnData) => {
+// 6. DEVOLUCIÓN (COMPLETA Y DETALLADA)
+export const notifyReturn = async (returnData, returnToStock) => {
     if (!bot) return;
     try {
+        const saleDate = formatDate(returnData.sale.sale_date);
+        const sellerName = returnData.sale.seller ? returnData.sale.seller.name : "Desconocido";
+        const sku = returnData.product.sku || "Sin SKU";
+        
+       
+        const destinationText = returnToStock 
+            ? "✅ <b>Regresa al Stock</b> (Disponible)" 
+            : "🗑️ <b>Desechado / Merma</b> (Pérdida Total)";
+
         const msg = `
-❌ <b>DEVOLUCIÓN</b>
-────────────────────
-📦 <b>Producto:</b> ${returnData.product.name}
-🔢 <b>Cant:</b> ${returnData.quantity}
-📝 <b>Motivo:</b> ${returnData.reason || 'No especificado'}
+🔙 <b>REPORTE DE DEVOLUCIÓN</b>
+🎫 <b>Ticket:</b> <code>#SALE-${returnData.sale.id_sale}</code>
+${separator}
+📅 <b>Venta Original:</b> ${saleDate}
+👤 <b>Vendedor: </b> ${sellerName}
+📱 <b>Cliente: </b> <code>${returnData.sale.buyer_phone}</code>
 
-📉 <b>Pérdida:</b>
-<b>(USD)</b> -${formatNumber(returnData.loss_usd)}
+📦 <b>PRODUCTO DEVUELTO:</b>
+<b>${returnData.quantity}x</b> ${returnData.product.name}
+🔢 <b>SKU:</b> <code>${sku}</code>
 
+📝 <b>MOTIVO:</b>
+<i>"${returnData.reason || 'No especificado'}"</i>
+${separator}
+📉 <b>IMPACTO Y DESTINO:</b>
+💸 <b>Pérdida:</b> -${formatCurrency(returnData.loss_usd)}
+${destinationText}
         `;
+
+        // Notificar solo a Admins
         const recipients = await prisma.users.findMany({
-          where: { role: { in: ['admin'] }, telegram_chat_id: { not: null } }
+          where: { role: 'admin', telegram_chat_id: { not: null } }
         });
-        recipients.forEach(u => safeReply(u.telegram_chat_id, msg));
-    } catch (e) { console.error(e); }
+
+        for (const u of recipients) {
+            await safeReply(u.telegram_chat_id, msg);
+        }
+
+    } catch (e) { console.error("Notify Return Error:", e); }
 };

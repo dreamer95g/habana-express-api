@@ -1,23 +1,21 @@
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { getDailyExchangeRate } from './exchangeRate.js';
-import { notifyDailyUpdate, notifyDailyPrices } from '../telegram.js';
+import { 
+    notifyDailyUpdate, 
+    notifyDailyPrices, 
+    notifyWarrantyExpiration 
+} from '../telegram.js';
 
 const prisma = new PrismaClient();
 
-/**
- * Core Logic: Daily Price Update
- * 1. Fetch Rate. 2. Update Config. 3. Update Prices. 4. Notify.
- */
 export const executeDailyUpdate = async () => {
   console.log("⏰ Starting Daily Price Update Routine...");
 
   try {
-    // 1. Fetch Rate
     const newRate = await getDailyExchangeRate();
     if (!newRate) return;
 
-    // 2. Update System Config
     const config = await prisma.system_configuration.findFirst();
     if (config) {
       await prisma.system_configuration.update({
@@ -26,13 +24,11 @@ export const executeDailyUpdate = async () => {
       });
     }
 
-    // 3. Bulk Update Prices (Active Products)
     const products = await prisma.products.findMany({ where: { active: true } });
     
     if (products.length > 0) {
         const updatePromises = products.map(product => {
             const cost = Number(product.purchase_price);
-            // Formula: Cost * 2 * Rate
             const newSalePrice = cost * 2 * newRate;
             return prisma.products.update({
                 where: { id_product: product.id_product },
@@ -43,10 +39,8 @@ export const executeDailyUpdate = async () => {
         await prisma.$transaction(updatePromises);
         console.log(`✅ Prices updated for ${products.length} products.`);
 
-        // 4. Notify Admin (Process Summary)
         await notifyDailyUpdate(newRate, products.length);
 
-        // 5. Notify Sellers (Price List)
         const sellers = await prisma.users.findMany({
             where: { role: 'seller', active: true, telegram_chat_id: { not: null } },
             include: { seller_products: { include: { product: true } } }
@@ -65,12 +59,55 @@ export const executeDailyUpdate = async () => {
 };
 
 /**
- * Scheduler Initialization
- * Checks every minute if current Havana time matches DB configuration.
+ * Tarea 2: Chequeo de Garantías Vencidas
  */
-export const initScheduler = () => {
-  console.log("📅 Initializing Dynamic Scheduler...");
+export const checkExpiredWarranties = async () => {
+    console.log("🛡️ Checking expired warranties...");
+    try {
+        const today = new Date();
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
 
+        const startOfDay = new Date(sevenDaysAgo.setHours(0, 0, 0, 0));
+        const endOfDay = new Date(sevenDaysAgo.setHours(23, 59, 59, 999));
+
+        const sales = await prisma.sales.findMany({
+            where: {
+                sale_date: {
+                    gte: startOfDay,
+                    lte: endOfDay
+                }
+            },
+            include: {
+                // 🔥 IMPORTANTE: Incluir Vendedor para notificarle
+                seller: true,
+                sale_products: {
+                    include: { product: true }
+                }
+            }
+        });
+
+        for (const sale of sales) {
+            const warrantyProducts = sale.sale_products
+                .map(sp => sp.product)
+                .filter(p => p.warranty === true);
+
+            if (warrantyProducts.length > 0) {
+                // Notificar a Admin y Vendedor
+                await notifyWarrantyExpiration(sale, warrantyProducts);
+                console.log(`✅ Warranty expired notification sent for Sale #${sale.id_sale}`);
+            }
+        }
+
+    } catch (error) {
+        console.error("❌ Error checking warranties:", error);
+    }
+};
+
+export const initScheduler = () => {
+  console.log("📅 Initializing Schedulers...");
+
+  // 1. Chequeo de Tasa (Minuto a minuto)
   cron.schedule('* * * * *', async () => {
     try {
         const config = await prisma.system_configuration.findFirst();
@@ -79,17 +116,11 @@ export const initScheduler = () => {
         const now = new Date();
         const cubaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
         
-        // Config time is usually UTC in Prisma/DB, so we compare logic manually or via UTC match
         const targetTime = new Date(config.exchange_rate_sync_time);
 
-        // Simple Hour/Minute matching
-        const currentHour = cubaTime.getHours();
-        const currentMinute = cubaTime.getMinutes();
-        const targetHour = targetTime.getUTCHours(); 
-        const targetMinute = targetTime.getUTCMinutes();
-
-        if (currentHour === targetHour && currentMinute === targetMinute) {
-             console.log(`⚡ It's ${currentHour}:${currentMinute} (Havana). Executing Daily Update...`);
+        if (cubaTime.getHours() === targetTime.getUTCHours() && 
+            cubaTime.getMinutes() === targetTime.getUTCMinutes()) {
+             console.log(`⚡ Executing Daily Price Update...`);
              await executeDailyUpdate();
         }
 
@@ -98,5 +129,10 @@ export const initScheduler = () => {
     }
   });
 
-  console.log("✅ Scheduler is running.");
+  // 2. Chequeo de Garantías (Diario a las 9 AM)
+  cron.schedule('0 9 * * *', async () => {
+      await checkExpiredWarranties();
+  });
+
+  console.log("✅ Scheduler services are running.");
 };

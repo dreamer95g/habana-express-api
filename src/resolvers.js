@@ -10,14 +10,14 @@ const prisma = new PrismaClient();
 /* 🛡️ --- SECURITY GUARDS --- 🛡️ */
 
 const requireAuth = (user) => {
-  if (!user) throw new Error('⛔ Authorization required.');
+  if (!user) throw new Error('⛔ Autorización requerida');
 };
 
 // 1. Admin Only
 const requireAdmin = (user) => {
   requireAuth(user);
   if (user.role !== 'admin') {
-    throw new Error('⛔ Access Denied: Admin role required.');
+    throw new Error('⛔ Acceso denegado: se requiere rol de Admin');
   }
 };
 
@@ -26,7 +26,7 @@ const requireStorekeeper = (user) => {
   requireAuth(user);
   if (user.role === 'admin') return; 
   if (user.role !== 'storekeeper') {
-    throw new Error('⛔ Access Denied: Storekeeper role required.');
+    throw new Error('⛔ Acceso denegado: se requiere rol de Storekeeper');
   }
 };
 
@@ -35,7 +35,7 @@ const requireSeller = (user) => {
   requireAuth(user);
   if (user.role === 'admin') return; 
   if (user.role !== 'seller') {
-    throw new Error('⛔ Access Denied: Seller role required.');
+    throw new Error('⛔ Acceso denegado: se requiere rol de Seller ');
   }
 };
 
@@ -207,12 +207,12 @@ export const resolvers = {
     // --- AUTH ---
     login: async (_, { phone, password }) => {
       const user = await prisma.users.findUnique({ where: { phone } });
-      if (!user) throw new Error('User not found');
+      if (!user) throw new Error('Usuario no encontrado');
       
       const valid = await comparePassword(password, user.password_hash);
-      if (!valid) throw new Error('Invalid password');
+      if (!valid) throw new Error('Contraseña incorrecta');
       
-      if (!user.active) throw new Error('Account is deactivated');
+      if (!user.active) throw new Error('La cuenta está desactivada');
       
       return { token: createToken(user), user };
     },
@@ -226,7 +226,7 @@ export const resolvers = {
     updateUser: async (_, { id_user, input }, { user }) => {
       requireAuth(user);
       if (user.role !== 'admin' && user.userId !== id_user) {
-        throw new Error("⛔ Forbidden: You can only edit your own profile.");
+        throw new Error("⛔ Prohibido: solo puedes editar tu propio perfil");
       }
 
       const dataToUpdate = { ...input };

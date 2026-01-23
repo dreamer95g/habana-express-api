@@ -1063,6 +1063,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import cors from 'cors';
 import { v2 as cloudinary } from 'cloudinary'; 
+import { spawn } from 'child_process';
+import { URL } from 'url'; 
 
 dotenv.config();
 
@@ -1184,6 +1186,77 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+
+// ---------------------------------------------------------
+// 🆕 ENDPOINT DE BACKUP (Base de Datos)
+// ---------------------------------------------------------
+app.get('/api/backup', async (req, res) => {
+  console.log("💾 Iniciando proceso de respaldo...");
+
+  // 1. Seguridad: Verificar Token
+  const token = req.headers.authorization || '';
+  const user = getUserFromToken(token);
+
+  if (!user || user.role !== 'admin') {
+    return res.status(403).send('⛔ Acceso denegado. Solo administradores.');
+  }
+
+  // 2. Obtener credenciales desde DATABASE_URL (.env)
+  // Formato: mysql://USER:PASSWORD@HOST:PORT/DB_NAME
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return res.status(500).send('Error: DATABASE_URL no configurada.');
+
+  try {
+    const parsedUrl = new URL(dbUrl);
+    const username = parsedUrl.username;
+    const password = parsedUrl.password;
+    const host = parsedUrl.hostname;
+    const port = parsedUrl.port || '3306';
+    const database = parsedUrl.pathname.substring(1); // Quita el '/' inicial
+
+    // 3. Configurar Headers para descarga
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `backup_habana_express_${date}.sql`;
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // 4. Ejecutar mysqldump
+    // NOTA: 'mysqldump' debe estar instalado en el sistema y accesible en el PATH
+    const dumpProcess = spawn('mysqldump', [
+      '-h', host,
+      '-P', port,
+      '-u', username,
+      `-p${password}`, // Sin espacio después de -p
+      '--single-transaction', // Para no bloquear la DB mientras copia
+      '--quick',
+      '--lock-tables=false',
+      database
+    ]);
+
+    // 5. Enviar el resultado directamente al navegador (Streaming)
+    dumpProcess.stdout.pipe(res);
+
+    // Manejo de errores del proceso
+    dumpProcess.stderr.on('data', (data) => {
+      console.error(`❌ Mysqldump Error: ${data}`);
+    });
+
+    dumpProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Respaldo completado y enviado.');
+      } else {
+        console.error(`⚠️ Proceso de respaldo terminó con código ${code}`);
+      }
+    });
+
+  } catch (error) {
+    console.error("Critical Backup Error:", error);
+    if (!res.headersSent) res.status(500).send('Error interno generando backup.');
+  }
+});
+
+
 // ---------------------------------------------------------
 // 4️⃣ INICIO DEL SERVIDOR
 // ---------------------------------------------------------
@@ -1232,14 +1305,14 @@ const prisma = new PrismaClient();
 /* 🛡️ --- SECURITY GUARDS --- 🛡️ */
 
 const requireAuth = (user) => {
-  if (!user) throw new Error('⛔ Authorization required.');
+  if (!user) throw new Error('⛔ Autorización requerida');
 };
 
 // 1. Admin Only
 const requireAdmin = (user) => {
   requireAuth(user);
   if (user.role !== 'admin') {
-    throw new Error('⛔ Access Denied: Admin role required.');
+    throw new Error('⛔ Acceso denegado: se requiere rol de Admin');
   }
 };
 
@@ -1248,7 +1321,7 @@ const requireStorekeeper = (user) => {
   requireAuth(user);
   if (user.role === 'admin') return; 
   if (user.role !== 'storekeeper') {
-    throw new Error('⛔ Access Denied: Storekeeper role required.');
+    throw new Error('⛔ Acceso denegado: se requiere rol de Storekeeper');
   }
 };
 
@@ -1257,7 +1330,7 @@ const requireSeller = (user) => {
   requireAuth(user);
   if (user.role === 'admin') return; 
   if (user.role !== 'seller') {
-    throw new Error('⛔ Access Denied: Seller role required.');
+    throw new Error('⛔ Acceso denegado: se requiere rol de Seller ');
   }
 };
 
@@ -1429,12 +1502,12 @@ export const resolvers = {
     // --- AUTH ---
     login: async (_, { phone, password }) => {
       const user = await prisma.users.findUnique({ where: { phone } });
-      if (!user) throw new Error('User not found');
+      if (!user) throw new Error('Usuario no encontrado');
       
       const valid = await comparePassword(password, user.password_hash);
-      if (!valid) throw new Error('Invalid password');
+      if (!valid) throw new Error('Contraseña incorrecta');
       
-      if (!user.active) throw new Error('Account is deactivated');
+      if (!user.active) throw new Error('La cuenta está desactivada');
       
       return { token: createToken(user), user };
     },
@@ -1448,7 +1521,7 @@ export const resolvers = {
     updateUser: async (_, { id_user, input }, { user }) => {
       requireAuth(user);
       if (user.role !== 'admin' && user.userId !== id_user) {
-        throw new Error("⛔ Forbidden: You can only edit your own profile.");
+        throw new Error("⛔ Prohibido: solo puedes editar tu propio perfil");
       }
 
       const dataToUpdate = { ...input };

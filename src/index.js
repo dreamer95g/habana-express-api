@@ -12,6 +12,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import cors from 'cors';
 import { v2 as cloudinary } from 'cloudinary'; 
+import { spawn } from 'child_process';
+import { URL } from 'url'; 
 
 dotenv.config();
 
@@ -132,6 +134,77 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     });
   }
 });
+
+
+// ---------------------------------------------------------
+// 🆕 ENDPOINT DE BACKUP (Base de Datos)
+// ---------------------------------------------------------
+app.get('/api/backup', async (req, res) => {
+  console.log("💾 Iniciando proceso de respaldo...");
+
+  // 1. Seguridad: Verificar Token
+  const token = req.headers.authorization || '';
+  const user = getUserFromToken(token);
+
+  if (!user || user.role !== 'admin') {
+    return res.status(403).send('⛔ Acceso denegado. Solo administradores.');
+  }
+
+  // 2. Obtener credenciales desde DATABASE_URL (.env)
+  // Formato: mysql://USER:PASSWORD@HOST:PORT/DB_NAME
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return res.status(500).send('Error: DATABASE_URL no configurada.');
+
+  try {
+    const parsedUrl = new URL(dbUrl);
+    const username = parsedUrl.username;
+    const password = parsedUrl.password;
+    const host = parsedUrl.hostname;
+    const port = parsedUrl.port || '3306';
+    const database = parsedUrl.pathname.substring(1); // Quita el '/' inicial
+
+    // 3. Configurar Headers para descarga
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `backup_habana_express_${date}.sql`;
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // 4. Ejecutar mysqldump
+    // NOTA: 'mysqldump' debe estar instalado en el sistema y accesible en el PATH
+    const dumpProcess = spawn('mysqldump', [
+      '-h', host,
+      '-P', port,
+      '-u', username,
+      `-p${password}`, // Sin espacio después de -p
+      '--single-transaction', // Para no bloquear la DB mientras copia
+      '--quick',
+      '--lock-tables=false',
+      database
+    ]);
+
+    // 5. Enviar el resultado directamente al navegador (Streaming)
+    dumpProcess.stdout.pipe(res);
+
+    // Manejo de errores del proceso
+    dumpProcess.stderr.on('data', (data) => {
+      console.error(`❌ Mysqldump Error: ${data}`);
+    });
+
+    dumpProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Respaldo completado y enviado.');
+      } else {
+        console.error(`⚠️ Proceso de respaldo terminó con código ${code}`);
+      }
+    });
+
+  } catch (error) {
+    console.error("Critical Backup Error:", error);
+    if (!res.headersSent) res.status(500).send('Error interno generando backup.');
+  }
+});
+
 
 // ---------------------------------------------------------
 // 4️⃣ INICIO DEL SERVIDOR

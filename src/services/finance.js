@@ -9,33 +9,31 @@ const roundInt = (val) => Math.round(Number(val));
 /**
  * Lógica central de cálculo financiero
  */
+// src/services/finance.js
+
 const calculateProfitInPeriod = async (startDate, endDate) => {
-  // 1. Obtener Configuración (para % de comisión)
   const config = await prisma.system_configuration.findFirst();
   const commissionPct = config ? Number(config.seller_commission_percentage) : 0;
 
-  // 2. Consultas a BD
-  const sales = await prisma.sales.findMany({
-    where: { sale_date: { gte: startDate, lte: endDate } },
-  });
-
+  // 1. Obtener Envíos (Inversión Total del mes)
   const shipments = await prisma.shipments.findMany({
     where: { shipment_date: { gte: startDate, lte: endDate } },
   });
 
+  // 2. Obtener Ventas (Ingreso Total del mes)
+  const sales = await prisma.sales.findMany({
+    where: { 
+      sale_date: { gte: startDate, lte: endDate },
+      status: 'COMPLETED' 
+    }
+  });
+
+  // 3. Obtener Devoluciones (Pérdidas del mes)
   const returns = await prisma.returns.findMany({
     where: { return_date: { gte: startDate, lte: endDate } },
   });
 
-  // 3. --- INGRESOS (INCOME) ---
-  let totalIncomeUSD = 0;
-  sales.forEach(sale => {
-    const rate = Number(sale.exchange_rate);
-    const cup = Number(sale.total_cup);
-    if (rate > 0) totalIncomeUSD += cup / rate;
-  });
-
-  // 4. --- COSTOS DE INVERSIÓN (INVESTMENT) ---
+  // --- CÁLCULO DE INVERSIÓN ---
   let totalInvestmentUSD = 0;
   shipments.forEach(ship => {
     const shipping = Number(ship.shipping_cost_usd);
@@ -43,32 +41,35 @@ const calculateProfitInPeriod = async (startDate, endDate) => {
     const customsCup = Number(ship.customs_fee_cup);
     const rate = Number(ship.exchange_rate);
     const customsUsd = rate > 0 ? customsCup / rate : 0;
-
+    
     totalInvestmentUSD += (shipping + merch + customsUsd);
   });
 
-  // 5. --- PÉRDIDAS OPERATIVAS (RETURNS) ---
+  // --- CÁLCULO DE GANANCIA ---
+  let totalSalesUSD = 0;
+  sales.forEach(sale => {
+    const rate = Number(sale.exchange_rate);
+    const totalCup = Number(sale.total_cup);
+    totalSalesUSD += (rate > 0 ? totalCup / rate : 0);
+  });
+
+  const totalCommissionsUSD = totalSalesUSD * (commissionPct / 100);
+  
   let returnLossesUSD = 0;
   returns.forEach(ret => {
     returnLossesUSD += Number(ret.loss_usd);
   });
 
-  // 6. --- COMISIONES VENDEDORES ---
-  const totalCommissionsUSD = totalIncomeUSD * (commissionPct / 100);
+  // GANANCIA = Ventas - Comisiones - Devoluciones
+  const gain = totalSalesUSD - totalCommissionsUSD - returnLossesUSD;
 
-  // 7. --- GANANCIA NETA (Sin Diezmo) ---
-  const netProfit = totalIncomeUSD - (totalInvestmentUSD + returnLossesUSD + totalCommissionsUSD);
-
-  // 🔥 RETORNAMOS VALORES REDONDEADOS A ENTEROS
   return {
-    income: roundInt(totalIncomeUSD),
-    investment: roundInt(totalInvestmentUSD),
-    returnLosses: roundInt(returnLossesUSD),
-    commissions: roundInt(totalCommissionsUSD),
-    netProfit: roundInt(netProfit)
+    income: roundInt(totalSalesUSD),
+    investment: roundInt(totalInvestmentUSD), // Flete + Mercancía + Aduana
+    profit: gain > 0 ? roundInt(gain) : 0,    // Ventas - Comisiones - Devoluciones (Nunca negativo)
+    netProfit: roundInt(totalSalesUSD - totalInvestmentUSD) // Flujo de caja neto para reporte
   };
 };
-
 /**
  * Reporte Mensual
  */
@@ -93,10 +94,8 @@ export const getAnnualReport = async () => {
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1);
   
-  // 1. Totales Globales (Redondeados)
   const globalData = await calculateProfitInPeriod(startOfYear, now);
 
-  // 2. Desglose para Gráficos
   const breakdown = [];
   for (let i = 0; i < 12; i++) {
     const start = new Date(now.getFullYear(), i, 1);
@@ -105,17 +104,21 @@ export const getAnnualReport = async () => {
 
     const monthData = await calculateProfitInPeriod(start, end);
     
-    // ROI se deja con 2 decimales porque es un porcentaje (ej: 12.5%)
+    // --- NUEVA LÓGICA DE ROI POSITIVO ---
+    // ROI = (Ganancia de Ventas / Inversión de Envíos) * 100
     let roi = 0;
     if (monthData.investment > 0) {
-      roi = (monthData.netProfit / monthData.investment) * 100;
+      roi = (monthData.profit / monthData.investment) * 100;
+    } else if (monthData.profit > 0) {
+      // Si hubo ventas pero no hubo inversión ese mes, el retorno es 100% o más
+      roi = 100; 
     }
 
     breakdown.push({
       month: i + 1,
-      investment: monthData.investment, // Ya viene redondeado
-      profit: monthData.netProfit,      // Ya viene redondeado
-      roiPercentage: parseFloat(roi.toFixed(2)) // Mantenemos decimales solo en ROI
+      investment: monthData.investment,
+      profit: monthData.profit, // Esta ya viene limpia (Ventas - Comisiones - Devoluciones)
+      roiPercentage: Math.max(0, parseFloat(roi.toFixed(2))) // Nunca menor a 0
     });
   }
 
@@ -127,7 +130,6 @@ export const getAnnualReport = async () => {
     totalNetProfit: globalData.netProfit
   };
 };
-
 /**
  * Ranking de Mejores Vendedores
  */

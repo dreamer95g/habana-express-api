@@ -10,14 +10,14 @@ const prisma = new PrismaClient();
 /* 🛡️ --- SECURITY GUARDS --- 🛡️ */
 
 const requireAuth = (user) => {
-  if (!user) throw new Error('⛔ Autorización requerida');
+  if (!user) throw new Error(' Autorización requerida');
 };
 
 // 1. Admin Only
 const requireAdmin = (user) => {
   requireAuth(user);
   if (user.role !== 'admin') {
-    throw new Error('⛔ Acceso denegado: se requiere rol de Admin');
+    throw new Error(' Acceso denegado: se requiere rol de Admin');
   }
 };
 
@@ -26,7 +26,7 @@ const requireStorekeeper = (user) => {
   requireAuth(user);
   if (user.role === 'admin') return; 
   if (user.role !== 'storekeeper') {
-    throw new Error('⛔ Acceso denegado: se requiere rol de Storekeeper');
+    throw new Error(' Acceso denegado: se requiere rol de Storekeeper');
   }
 };
 
@@ -35,7 +35,7 @@ const requireSeller = (user) => {
   requireAuth(user);
   if (user.role === 'admin') return; 
   if (user.role !== 'seller') {
-    throw new Error('⛔ Acceso denegado: se requiere rol de Seller ');
+    throw new Error(' Acceso denegado: se requiere rol de Seller ');
   }
 };
 
@@ -120,15 +120,30 @@ export const resolvers = {
       return prisma.shipments.findMany({ orderBy: { shipment_date: 'desc' } });
     },
     
-    sellerProducts: (_, { sellerId }, { user }) => {
-      requireAuth(user);
-      let targetId = (user.role === 'admin' || user.role === 'storekeeper') ? sellerId : user.id_user;
-      
-      return prisma.seller_products.findMany({
-        where: { id_seller: targetId },
-        include: { seller: true, product: true },
-      });
+    sellerProducts: async (_, { sellerId }, { user }) => {
+  requireAuth(user);
+
+  // 1. Determinar el ID del vendedor a consultar
+  // Si es admin/storekeeper, usa el sellerId que viene por argumento.
+  // Si es un vendedor, OBLIGATORIAMENTE usa SU ID que viene en el token (userId).
+  const targetId = (user.role === 'admin' || user.role === 'storekeeper') 
+    ? parseInt(sellerId) 
+    : parseInt(user.userId); // <--- CAMBIO CLAVE: usar userId
+
+  if (!targetId) {
+    throw new Error("ID de vendedor no proporcionado o inválido.");
+  }
+
+  return prisma.seller_products.findMany({
+    where: { 
+      id_seller: targetId 
     },
+    include: { 
+      seller: true, 
+      product: true 
+    },
+  });
+},
 
     // --- DASHBOARD & REPORTS ---
    dashboardStats: async (_, __, { user }) => {
@@ -140,15 +155,12 @@ export const resolvers = {
 
       // LÓGICA DIFERENCIADA POR ROL
       if (user.role === 'seller') {
-        // --- CASO VENDEDOR: SOLO SU MUNDO ---
-        
-        // 1. Stock: Cantidad de SKUs (productos distintos) que tiene asignados y con cantidad > 0
-        activeProductsCount = await prisma.seller_products.count({
-            where: { 
-                id_seller: user.userId, // Usamos userId que viene del token (en el context es user.userId o user.id_user según tu auth.js, revisa eso. En tu código anterior era user.userId)
-                quantity: { gt: 0 }     // Solo lo que tiene existencia real
-            }
-        });
+    activeProductsCount = await prisma.seller_products.count({
+        where: { 
+            id_seller: parseInt(user.userId), // <--- Asegúrate que diga userId
+            quantity: { gt: 0 }
+        }
+    });
 
         // 2. Ventas: Suma de cantidades vendidas SOLO por él
         const soldAggregation = await prisma.sale_products.aggregate({
@@ -226,7 +238,7 @@ export const resolvers = {
     updateUser: async (_, { id_user, input }, { user }) => {
       requireAuth(user);
       if (user.role !== 'admin' && user.userId !== id_user) {
-        throw new Error("⛔ Prohibido: solo puedes editar tu propio perfil");
+        throw new Error(" Prohibido: solo puedes editar tu propio perfil");
       }
 
       const dataToUpdate = { ...input };
@@ -340,7 +352,7 @@ export const resolvers = {
       if (!product) throw new Error("Producto no encontrado");
       
       if (quantity > product.stock) {
-          throw new Error(`⛔ Stock global insuficiente. Disponible: ${product.stock}`);
+          throw new Error(` Stock global insuficiente. Disponible: ${product.stock}`);
       }
 
       const existing = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
@@ -363,7 +375,7 @@ export const resolvers = {
       requireStorekeeper(user);
       const assignment = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
       if (!assignment || assignment.quantity < quantity) {
-        throw new Error("⛔ El vendedor no tiene esa cantidad.");
+        throw new Error(" El vendedor no tiene esa cantidad.");
       }
 
       if (assignment.quantity === quantity) {
@@ -382,7 +394,7 @@ export const resolvers = {
     createSale: async (_, { sellerId, exchange_rate, total_cup, buyer_phone, payment_method, notes, items }, { user }) => {
       // Seguridad: Un vendedor solo vende lo suyo, Admin vende por cualquiera
       if (user.role !== 'admin' && parseInt(user.userId) !== sellerId) {
-           throw new Error('⛔ No puedes registrar ventas de otro usuario.');
+           throw new Error(' No puedes registrar ventas de otro usuario.');
       }
 
       // Validar Stock Asignado
@@ -395,7 +407,7 @@ export const resolvers = {
         });
 
         if (!assignment || assignment.quantity < item.quantity) {
-            throw new Error(`⛔ Stock insuficiente de: ${product.name}.`);
+            throw new Error(` Stock insuficiente de: ${product.name}.`);
         }
       }
 
@@ -519,7 +531,7 @@ export const resolvers = {
     createReturn: async (_, { saleId, productId, quantity, reason, returnToStock }, { user }) => {
        // Solo Admin o Storekeeper
        if (user.role !== 'admin' && user.role !== 'storekeeper') {
-          throw new Error("⛔ Access Denied.");
+          throw new Error(" Access Denied.");
        }
 
        // 1. Validar Venta

@@ -3,12 +3,9 @@ Archivo: C:\Users\gabry\Desktop\Habana Express Store\habana-express-api\.env
 ============================================
 
 
-DATABASE_URL="mysql://root:root@localhost:3306/habana_express_store"
+DATABASE_URL="mysql://root:Segur100..@localhost:3306/habana_express_store"
 PORT=4000
-
-JWT_SECRET="Gabry123"
-
-# 👇 AGREGA ESTO
+JWT_SECRET="GabryMVP_PROD"
 CLOUDINARY_CLOUD_NAME="ddnqbgqfn"
 CLOUDINARY_API_KEY="714472522733682"
 CLOUDINARY_API_SECRET="S1cBDX5f9_Ox5ncFVl4slpgKTZk"
@@ -384,6 +381,12 @@ npm run dev
 
 # Modo Producci�n
 npm start
+
+#PM2
+
+pm2 start src/index.js --name "habana-api"
+pm2 save
+pm2 startup
 
 Accede al Playground de GraphQL en: http://localhost:4000/graphql
 
@@ -1095,7 +1098,10 @@ if (!fs.existsSync(uploadDir)) {
 const app = express();
 
 // 🔥 CORS: Siempre al principio
-app.use(cors()); 
+app.use(cors({
+  origin: ["http://localhost:5173", "https://habana-express.vercel.app"], 
+  credentials: true
+}));
 
 // ---------------------------------------------------------
 // 2️⃣ CONFIGURACIÓN MULTER (Almacenamiento Temporal)

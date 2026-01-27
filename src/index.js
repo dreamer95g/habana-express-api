@@ -43,8 +43,27 @@ if (!fs.existsSync(uploadDir)) {
 
 const app = express();
 
-// 🔥 CORS: Siempre al principio
-app.use(cors()); 
+
+
+app.use(cors({ 
+origin: [
+ "http://localhost:5173", 
+ "https://habanaexpress.vercel.app", 
+ "https://natalya-euphoric-unseverely.ngrok-free.dev" ], 
+ credentials: true, 
+ methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'ngrok-skip-browser-warning' 
+  ],
+  exposedHeaders: ['Content-Disposition'] 
+ 
+ }));
+ 
+ 
+
+
 
 // ---------------------------------------------------------
 // 2️⃣ CONFIGURACIÓN MULTER (Almacenamiento Temporal)
@@ -227,6 +246,7 @@ async function startServer() {
 
   await server.start();
   server.applyMiddleware({ app });
+  
 
   const PORT = process.env.PORT || 4000;
   app.listen({ port: PORT }, () => {

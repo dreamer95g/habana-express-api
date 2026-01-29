@@ -84,6 +84,31 @@ export const resolvers = {
       });
     },
 
+    catalogData: async () => {
+      // 1. Obtener productos activos QUE TENGAN STOCK EN MANOS DE VENDEDORES
+      const products = await prisma.products.findMany({
+        where: { 
+          active: true, 
+          // 👇 ESTA ES LA CLAVE: 
+          // Filtramos solo productos donde AL MENOS UN vendedor tenga cantidad > 0
+          seller_products: {
+            some: {
+              quantity: { gt: 0 }
+            }
+          }
+        },
+        orderBy: { date_added: 'desc' }
+      });
+
+      // 2. Obtener configuración
+      const config = await prisma.system_configuration.findFirst();
+
+      return {
+        products,
+        companyPhone: config?.company_phone || ''
+      };
+    },
+
     // --- CATEGORIES ---
     categories: (_, __, { user }) => {
       requireAuth(user);
@@ -642,5 +667,21 @@ export const resolvers = {
   SellerProduct: { 
     product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }), 
     seller: (parent) => parent.seller || prisma.users.findUnique({ where: { id_user: parent.id_seller } }) 
+  },
+
+   Product: {
+    // Esto busca automáticamente quién tiene este producto en stock personal
+    active_sellers_phones: async (parent) => {
+      const sellersWithStock = await prisma.seller_products.findMany({
+        where: {
+          id_product: parent.id_product,
+          quantity: { gt: 0 } // Solo si tienen más de 0
+        },
+        include: { seller: true }
+      });
+      
+      // Devolvemos solo un array de teléfonos: ["555555", "533333"]
+      return sellersWithStock.map(s => s.seller.phone);
+    }
   }
 };

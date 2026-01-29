@@ -18,6 +18,8 @@ logs
 *.log
 *.csv
 
+*.env
+
 # OS
 .DS_Store
 Thumbs.db

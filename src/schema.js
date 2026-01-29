@@ -37,6 +37,11 @@ export const typeDefs = gql`
     active: Boolean
   }
 
+  type CatalogData {
+  products: [Product]
+  companyPhone: String
+}
+
   type User {
     id_user: Int!
     name: String!
@@ -80,6 +85,7 @@ export const typeDefs = gql`
     sale_products: [SaleProduct]
     returns: [Return]
     seller_products: [SellerProduct]
+    active_sellers_phones: [String] 
   }
 
   type ProductCategory {
@@ -286,6 +292,7 @@ export const typeDefs = gql`
     annualReport: AnnualReport
     topSellers(period: String!): [TopSeller]
     dashboardStats: DashboardStats
+    catalogData: CatalogData
   }
 
   type Mutation {

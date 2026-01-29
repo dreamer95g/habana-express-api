@@ -21,11 +21,11 @@ export const getDailyExchangeRate = async () => {
       throw new Error("API did not return valid data in cupHistory[0].value");
     }
 
-    // Regla de Negocio: Redondeo a la decena más cercana
-    // Ejemplo: 514 -> 510, 515 -> 520
-    const finalRate = Math.round(latest / 10) * 10;
+    // 👇 CAMBIO AQUÍ: Usamos Math.ceil para forzar siempre hacia arriba
+    // Regla: 441 -> 450, 449 -> 450, 450 -> 450
+    const finalRate = Math.ceil(latest / 10) * 10;
 
-    console.log(`✅ Current Rate: ${latest} | Rounded Rate: ${finalRate}`);
+    console.log(`✅ Tasa Original: ${latest} | 📈 Tasa Ajustada (Techo): ${finalRate}`);
 
     return finalRate;
 

@@ -57,7 +57,7 @@ const setupCommands = async () => {
     bot.start(async (ctx) => {
         const chatId = ctx.chat.id.toString();
         const user = await prisma.users.findFirst({ where: { telegram_chat_id: chatId } });
-        if (user?.role === 'admin') return ctx.reply(`👑 <b>Admin ${user.name} activo.</b>`, { parse_mode: 'HTML' });
+        if (user?.role === 'admin') return ctx.reply(`<b>Admin ${user.name}</b>`, { parse_mode: 'HTML' });
         if (user?.role === 'seller') return ctx.reply(`👋 <b>Vendedor ${user.name} activo.</b>`, { parse_mode: 'HTML' });
         return ctx.reply(`👋 <b>Bienvenido</b>\nTu ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
     });
@@ -67,17 +67,55 @@ const setupCommands = async () => {
         if (user) return next();
     };
 
-    bot.command('monthly', verifyAdmin, async (ctx) => {
+    // 1. REPORTE MENSUAL
+bot.command('monthly', verifyAdmin, async (ctx) => {
+    try {
         const d = await getMonthlyReport();
-        const roi = d.investment > 0 ? ((d.profit / d.investment) * 100).toFixed(1) : "0.0";
-        ctx.reply(`📊 <b>RESUMEN MENSUAL</b>\n${separator}\n📦 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}\n💰 <b>GANANCIA:</b> ${formatCurrency(d.profit)}\n📈 <b>ROI:</b> <code>${roi}%</code>\n${separator}\n💵 <b>NETO:</b> ${formatCurrency(d.netProfit)}`, { parse_mode: 'HTML' });
-    });
+        const roi = d.roiPercentage || 0;
+        const net = d.netProfit || 0; // Balance real (Ventas - Todo)
+        
+        const statusIcon = net >= 0 ? "🟢" : "🔴";
+        const trendIcon = roi >= 30 ? "🚀" : (roi > 0 ? "📈" : "📉");
 
-    bot.command('yearly', verifyAdmin, async (ctx) => {
+        const message = `
+📊 <b>RESUMEN MENSUAL</b>
+${separator}
+💰 <b>VENTAS:</b> ${formatCurrency(d.income)}
+📦 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}
+${separator}
+💵 <b>UTILIDAD NETA:</b> ${formatCurrency(d.profit)}
+💹 <b>BALANCE REAL:</b> ${formatCurrency(net)}
+${trendIcon} <b>ROI:</b> <code>${roi}%</code>
+
+${statusIcon} <b>ESTADO:</b> ${net >= 0 ? 'EN GANANCIA' : 'RECUPERANDO INVERSIÓN'}
+`;
+        ctx.reply(message, { parse_mode: 'HTML' });
+    } catch (e) {
+        ctx.reply("❌ Error generando reporte mensual.");
+    }
+});
+
+// 2. REPORTE ANUAL
+bot.command('yearly', verifyAdmin, async (ctx) => {
+    try {
         const d = await getAnnualReport();
-        const roi = d.investment > 0 ? ((d.profit / d.investment) * 100).toFixed(1) : "0.0";
-        ctx.reply(`📈 <b>BALANCE ANUAL</b>\n${separator}\n📦 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}\n💵 <b>UTILIDAD:</b> ${formatCurrency(d.profit)}\n📊 <b>ROI:</b> <code>${roi}%</code>\n${separator}\n💰 <b>NETO:</b> ${formatCurrency(d.netProfit)}`, { parse_mode: 'HTML' });
-    });
+        const roi = ((d.totalNetProfit / d.investment) * 100).toFixed(1);
+        
+        const message = `
+📈 <b>BALANCE ANUAL ${d.year}</b>
+${separator}
+🛒 <b>VENTAS TOTALES:</b> ${formatCurrency(d.income)}
+✈ <b>INVERSIÓN TOTAL:</b> ${formatCurrency(d.investment)}
+${separator}
+💰 <b>UTILIDAD NETA:</b> ${formatCurrency(d.totalNetProfit)}
+📊 <b>ROI ANUAL:</b> <code>${roi}%</code>
+
+`;
+        ctx.reply(message, { parse_mode: 'HTML' });
+    } catch (e) {
+        ctx.reply("❌ Error generando reporte anual.");
+    }
+});
 };
 
 // --- 🚀 INICIO ---
@@ -88,7 +126,7 @@ export const initTelegramBot = async () => {
         bot = new Telegraf(config.telegram_bot_token);
         await setupCommands();
         bot.launch({ dropPendingUpdates: true });
-        console.log("🤖 Bot listo.");
+        console.log("🤖 Bot ready");
     } catch (e) { console.error("Error:", e); }
 };
 

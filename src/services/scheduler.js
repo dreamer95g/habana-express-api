@@ -114,6 +114,40 @@ export const checkExpiredWarranties = async () => {
     }
 };
 
+// export const initScheduler = () => {
+//   console.log("📅 Initializing Schedulers...");
+
+//   // 1. Chequeo de Tasa (Minuto a minuto)
+//   cron.schedule('* * * * *', async () => {
+//     try {
+//         const config = await prisma.system_configuration.findFirst();
+//         if (!config || !config.exchange_rate_sync_time) return;
+
+//         const now = new Date();
+//         const cubaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
+        
+//         const targetTime = new Date(config.exchange_rate_sync_time);
+
+//         if (cubaTime.getHours() === targetTime.getUTCHours() && 
+//             cubaTime.getMinutes() === targetTime.getUTCMinutes()) {
+//              console.log(`⚡ Executing Daily Price Update...`);
+//              await executeDailyUpdate();
+//         }
+
+//     } catch (error) {
+//         console.error("Scheduler Error:", error.message);
+//     }
+//   });
+
+//   // 2. Chequeo de Garantías (Diario a las 9 AM)
+//   cron.schedule('0 9 * * *', async () => {
+//       await checkExpiredWarranties();
+//   });
+
+//   console.log("✅ Scheduler services are running.");
+// };
+
+
 export const initScheduler = () => {
   console.log("📅 Initializing Schedulers...");
 
@@ -123,14 +157,23 @@ export const initScheduler = () => {
         const config = await prisma.system_configuration.findFirst();
         if (!config || !config.exchange_rate_sync_time) return;
 
+        // 1. Obtener Hora Actual en Cuba en formato "HH:mm"
         const now = new Date();
-        const cubaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
-        
-        const targetTime = new Date(config.exchange_rate_sync_time);
+        const cubaTimeStr = now.toLocaleTimeString("en-US", { 
+          timeZone: "America/Havana", 
+          hour12: false, 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
 
-        if (cubaTime.getHours() === targetTime.getUTCHours() && 
-            cubaTime.getMinutes() === targetTime.getUTCMinutes()) {
-             console.log(`⚡ Executing Daily Price Update...`);
+        // 2. Obtener Hora de la DB y convertirla a "HH:mm"
+        // Prisma devuelve el objeto Date, usamos toISOString para sacar solo la hora
+        const dbDate = new Date(config.exchange_rate_sync_time);
+        const targetTimeStr = dbDate.toISOString().substring(11, 16); 
+
+        // 3. Comparar directamente los textos (Ej: "08:00" === "08:00")
+        if (cubaTimeStr === targetTimeStr) {
+             console.log(`⚡ Hora coincidente (${cubaTimeStr}). Ejecutando Actualización Diaria...`);
              await executeDailyUpdate();
         }
 

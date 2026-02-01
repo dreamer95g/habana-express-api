@@ -48,7 +48,7 @@ const app = express();
 app.use(cors({ 
 origin: [
  "http://localhost:5173", 
- "https://habanaexpress.vercel.app", 
+ "https://habana-express-2026.vercel.app", 
  "https://natalya-euphoric-unseverely.ngrok-free.dev" ], 
  credentials: true, 
  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

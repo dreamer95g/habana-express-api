@@ -176,7 +176,8 @@ export const typeDefs = gql`
 
   type MonthlyBreakdown {
     month: Int!
-    investment: Float!      
+    investment: Float!
+    income: Float!      
     profit: Float!          
     roiPercentage: Float!   
   }

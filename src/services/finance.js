@@ -11,128 +11,165 @@ const roundInt = (val) => Math.round(Number(val));
  */
 // src/services/finance.js
 
-const calculateProfitInPeriod = async (startDate, endDate) => {
+export const calculateProfitInPeriod = async (startDate, endDate) => {
   const config = await prisma.system_configuration.findFirst();
   const commissionPct = config ? Number(config.seller_commission_percentage) : 0;
 
-  // 1. Obtener Envíos (Inversión Total del mes)
+  // 1. Obtener Envíos
   const shipments = await prisma.shipments.findMany({
     where: { shipment_date: { gte: startDate, lte: endDate } },
   });
 
-  // 2. Obtener Ventas (Ingreso Total del mes)
+  // 2. Obtener Ventas
   const sales = await prisma.sales.findMany({
-    where: { 
-      sale_date: { gte: startDate, lte: endDate },
-      status: 'COMPLETED' 
-    }
+    where: { sale_date: { gte: startDate, lte: endDate }, status: 'COMPLETED' },
   });
 
-  // 3. Obtener Devoluciones (Pérdidas del mes)
+  // 3. Obtener Devoluciones
   const returns = await prisma.returns.findMany({
     where: { return_date: { gte: startDate, lte: endDate } },
   });
 
-  // --- CÁLCULO DE INVERSIÓN ---
+  // --- CÁLCULO INVERSIÓN ---
   let totalInvestmentUSD = 0;
   shipments.forEach(ship => {
-    const shipping = Number(ship.shipping_cost_usd);
-    const merch = Number(ship.merchandise_cost_usd);
-    const customsCup = Number(ship.customs_fee_cup);
-    const rate = Number(ship.exchange_rate);
-    const customsUsd = rate > 0 ? customsCup / rate : 0;
-    
-    totalInvestmentUSD += (shipping + merch + customsUsd);
+    const rate = Number(ship.exchange_rate) || 1;
+    const customsUsd = Number(ship.customs_fee_cup) / rate;
+    totalInvestmentUSD += Number(ship.shipping_cost_usd) + Number(ship.merchandise_cost_usd) + customsUsd;
   });
 
-  // --- CÁLCULO DE GANANCIA ---
+  // --- CÁLCULO VENTAS ---
   let totalSalesUSD = 0;
   sales.forEach(sale => {
-    const rate = Number(sale.exchange_rate);
-    const totalCup = Number(sale.total_cup);
-    totalSalesUSD += (rate > 0 ? totalCup / rate : 0);
+    const rate = Number(sale.exchange_rate) || 1;
+    totalSalesUSD += (Number(sale.total_cup) / rate);
   });
 
+  // --- GASTOS ---
   const totalCommissionsUSD = totalSalesUSD * (commissionPct / 100);
-  
   let returnLossesUSD = 0;
-  returns.forEach(ret => {
-    returnLossesUSD += Number(ret.loss_usd);
-  });
+  returns.forEach(ret => { returnLossesUSD += Number(ret.loss_usd); });
 
-  // GANANCIA = Ventas - Comisiones - Devoluciones
-  const gain = totalSalesUSD - totalCommissionsUSD - returnLossesUSD;
+  // UTILIDAD REAL
+  const realProfit = totalSalesUSD - (totalInvestmentUSD + totalCommissionsUSD + returnLossesUSD);
 
   return {
-    income: roundInt(totalSalesUSD),
-    investment: roundInt(totalInvestmentUSD), // Flete + Mercancía + Aduana
-    profit: gain > 0 ? roundInt(gain) : 0,    // Ventas - Comisiones - Devoluciones (Nunca negativo)
-    netProfit: roundInt(totalSalesUSD - totalInvestmentUSD) // Flujo de caja neto para reporte
+    income: roundInt(totalSalesUSD) || 0,
+    investment: roundInt(totalInvestmentUSD) || 0,
+    // profit es para el gráfico (no menor a 0)
+    profit: realProfit > 0 ? roundInt(realProfit) : 0, 
+    // netProfit es el valor real (puede ser negativo)
+    netProfit: roundInt(realProfit) || 0 
   };
 };
 /**
  * Reporte Mensual
  */
 export const getMonthlyReport = async () => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  // 1. Obtenemos la fecha actual "traducida" a la hora de Cuba
+  const cubaTime = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Havana"}));
   
-  const data = await calculateProfitInPeriod(startOfMonth, now);
+  const year = cubaTime.getFullYear();
+  const month = cubaTime.getMonth();
+
+  // 2. Definimos el inicio del mes: Día 1 a las 00:00:00 (Hora Cuba)
+  const startOfMonth = new Date(year, month, 1, 0, 0, 0);
+  
+  // 3. Definimos el final del mes: Último día a las 23:59:59 (Hora Cuba)
+  // Usamos month + 1 y día 0 para obtener el último día del mes actual
+  const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+
+  // 4. Pasamos el rango exacto al calculador
+  const data = await calculateProfitInPeriod(startOfMonth, endOfMonth);
   
   return {
     period: "Mensual",
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
+    month: month + 1,
+    year: year,
     ...data
   };
 };
 
 /**
- * Reporte Anual
+ * Reporte Anual Completo
+ * Genera el balance de los 12 meses del año actual
  */
 export const getAnnualReport = async () => {
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  
-  const globalData = await calculateProfitInPeriod(startOfYear, now);
+  try {
+    // 1. Forzamos la zona horaria de Cuba para no depender de la hora del VPS
+    const cubaTime = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Havana" }));
+    const currentYear = cubaTime.getFullYear();
 
-  const breakdown = [];
-  for (let i = 0; i < 12; i++) {
-    const start = new Date(now.getFullYear(), i, 1);
-    const end = new Date(now.getFullYear(), i + 1, 0, 23, 59, 59);
-    if (start > now) break;
+    // 2. Rango global del año (Enero 1 a Diciembre 31)
+    const startOfYear = new Date(currentYear, 0, 1, 0, 0, 0);
+    const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59);
 
-    const monthData = await calculateProfitInPeriod(start, end);
-    
-    // --- NUEVA LÓGICA DE ROI POSITIVO ---
-    // ROI = (Ganancia de Ventas / Inversión de Envíos) * 100
-    let roi = 0;
-    if (monthData.investment > 0) {
-      roi = (monthData.profit / monthData.investment) * 100;
-    } else if (monthData.profit > 0) {
-      // Si hubo ventas pero no hubo inversión ese mes, el retorno es 100% o más
-      roi = 100; 
+    // 3. Obtenemos el balance global del año llamando a la función de periodo
+    const globalData = await calculateProfitInPeriod(startOfYear, endOfYear);
+
+    const breakdown = [];
+
+    // 4. Ciclo para generar los 12 meses
+    for (let i = 0; i < 12; i++) {
+      // Definimos inicio y fin de cada mes (Hora Cuba)
+      const startOfMonth = new Date(currentYear, i, 1, 0, 0, 0);
+      const endOfMonth = new Date(currentYear, i + 1, 0, 23, 59, 59);
+
+      // Si el mes es futuro, enviamos datos en cero
+      if (startOfMonth > cubaTime) {
+        breakdown.push({
+          month: i + 1,
+          investment: 0,
+          income: 0,     // <--- Necesario para el gráfico
+          profit: 0,
+          roiPercentage: 0
+        });
+        continue;
+      }
+
+      // Calculamos los datos del mes específico
+      const monthData = await calculateProfitInPeriod(startOfMonth, endOfMonth);
+
+      // Lógica de ROI para el mes
+      let roi = 0;
+      if (monthData.investment > 0) {
+        // ROI Real = (Utilidad Neta / Inversión) * 100
+        roi = (monthData.netProfit / monthData.investment) * 100;
+      } else if (monthData.netProfit > 0) {
+        // Si vendiste sin invertir este mes, es recuperación (100%)
+        roi = 100;
+      }
+
+      // Insertamos en el desglose
+      breakdown.push({
+        month: i + 1,
+        investment: monthData.investment || 0,
+        income: monthData.income || 0,      // <--- ESTA ES LA LÍNEA AZUL DE TU GRÁFICO
+        profit: monthData.profit || 0,      // Para el gráfico de barras (mínimo 0)
+        roiPercentage: parseFloat(roi.toFixed(2)) || 0
+      });
     }
 
-    breakdown.push({
-      month: i + 1,
-      investment: monthData.investment,
-      profit: monthData.profit, // Esta ya viene limpia (Ventas - Comisiones - Devoluciones)
-      roiPercentage: Math.max(0, parseFloat(roi.toFixed(2))) // Nunca menor a 0
-    });
-  }
+    // 5. Retornamos el objeto exacto que pide el Schema de GraphQL
+    return {
+      year: currentYear,
+      totalNetProfit: globalData.netProfit || 0, // Campo obligatorio
+      income: globalData.income || 0,
+      investment: globalData.investment || 0,
+      profit: globalData.profit || 0,
+      breakdown: breakdown
+    };
 
-  return {
-    period: "Anual",
-    year: now.getFullYear(),
-    ...globalData, 
-    breakdown: breakdown,
-    totalNetProfit: globalData.netProfit
-  };
+  } catch (error) {
+    console.error("❌ Error en getAnnualReport:", error);
+    // En caso de error crítico, devolvemos estructura vacía para no romper el front
+    return {
+      year: new Date().getFullYear(),
+      totalNetProfit: 0,
+      breakdown: []
+    };
+  }
 };
-/**
- * Ranking de Mejores Vendedores
- */
 export const calculateTopSellers = async (period) => {
   const now = new Date();
   let startDate;

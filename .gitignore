@@ -1,25 +1,51 @@
-# Node.js
+
+# Dependencias
 node_modules/
+package-lock.json
+yarn.lock
+
+# Variables de Entorno (SEGURIDAD CRÍTICA)
+.env
+.env.*
+!.env.example
+
+# Archivos de Compilación
+dist/
+build/
+.vercel/
+.next/
+
+# Base de Datos y Backups
+prisma/dev.db
+prisma/dev.db-journal
+*.sql
+*.sqlite
+backup_*.sql
+
+# Archivos Temporales y Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Ignorar completamente uploads
-uploads/
-
-# Prisma
-.prisma/
-
-# Env files
-.env
-
-# Logs
-logs
-*.log
-*.csv
-
-*.env
-
-# OS
 .DS_Store
 Thumbs.db
+logs/
+*.log
+*.bat
+*.txt
+
+# Backend Específico
+uploads/
+temp/
+
+# Editores de Código
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# PWA y Caché
+.expo/
+.turbo/

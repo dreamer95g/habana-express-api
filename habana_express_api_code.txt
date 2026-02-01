@@ -1138,7 +1138,7 @@ const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
-    cb(new Error('⛔ Solo se permiten archivos de imagen.'), false);
+    cb(new Error('Solo se permiten archivos de imagen.'), false);
   }
 };
 
@@ -1400,6 +1400,31 @@ export const resolvers = {
               seller_products: true 
           } 
       });
+    },
+
+    catalogData: async () => {
+      // 1. Obtener productos activos QUE TENGAN STOCK EN MANOS DE VENDEDORES
+      const products = await prisma.products.findMany({
+        where: { 
+          active: true, 
+          // 👇 ESTA ES LA CLAVE: 
+          // Filtramos solo productos donde AL MENOS UN vendedor tenga cantidad > 0
+          seller_products: {
+            some: {
+              quantity: { gt: 0 }
+            }
+          }
+        },
+        orderBy: { date_added: 'desc' }
+      });
+
+      // 2. Obtener configuración
+      const config = await prisma.system_configuration.findFirst();
+
+      return {
+        products,
+        companyPhone: config?.company_phone || ''
+      };
     },
 
     // --- CATEGORIES ---
@@ -1960,6 +1985,22 @@ export const resolvers = {
   SellerProduct: { 
     product: (parent) => parent.product || prisma.products.findUnique({ where: { id_product: parent.id_product } }), 
     seller: (parent) => parent.seller || prisma.users.findUnique({ where: { id_user: parent.id_seller } }) 
+  },
+
+   Product: {
+    // Esto busca automáticamente quién tiene este producto en stock personal
+    active_sellers_phones: async (parent) => {
+      const sellersWithStock = await prisma.seller_products.findMany({
+        where: {
+          id_product: parent.id_product,
+          quantity: { gt: 0 } // Solo si tienen más de 0
+        },
+        include: { seller: true }
+      });
+      
+      // Devolvemos solo un array de teléfonos: ["555555", "533333"]
+      return sellersWithStock.map(s => s.seller.phone);
+    }
   }
 };.
 .
@@ -2005,6 +2046,11 @@ export const typeDefs = gql`
     active: Boolean
   }
 
+  type CatalogData {
+  products: [Product]
+  companyPhone: String
+}
+
   type User {
     id_user: Int!
     name: String!
@@ -2048,6 +2094,7 @@ export const typeDefs = gql`
     sale_products: [SaleProduct]
     returns: [Return]
     seller_products: [SellerProduct]
+    active_sellers_phones: [String] 
   }
 
   type ProductCategory {
@@ -2254,6 +2301,7 @@ export const typeDefs = gql`
     annualReport: AnnualReport
     topSellers(period: String!): [TopSeller]
     dashboardStats: DashboardStats
+    catalogData: CatalogData
   }
 
   type Mutation {
@@ -2391,7 +2439,7 @@ const setupCommands = async () => {
     bot.command('yearly', verifyAdmin, async (ctx) => {
         const d = await getAnnualReport();
         const roi = d.investment > 0 ? ((d.profit / d.investment) * 100).toFixed(1) : "0.0";
-        ctx.reply(`📈 <b>BALANCE ANUAL</b>\n${separator}\n🚢 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}\n💵 <b>UTILIDAD:</b> ${formatCurrency(d.profit)}\n📊 <b>ROI:</b> <code>${roi}%</code>\n${separator}\n💰 <b>NETO:</b> ${formatCurrency(d.netProfit)}`, { parse_mode: 'HTML' });
+        ctx.reply(`📈 <b>BALANCE ANUAL</b>\n${separator}\n📦 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}\n💵 <b>UTILIDAD:</b> ${formatCurrency(d.profit)}\n📊 <b>ROI:</b> <code>${roi}%</code>\n${separator}\n💰 <b>NETO:</b> ${formatCurrency(d.netProfit)}`, { parse_mode: 'HTML' });
     });
 };
 
@@ -2446,7 +2494,7 @@ ${separator}
 👤 <b>Vendedor:</b> ${sale.seller.name}
 📱 <b>Cliente:</b> <code>${sale.buyer_phone}</code>
 
-🛒 <b>ITEMS:</b>
+🛒 <b>PRODUCTOS:</b>
 ${items}${separator}
 💵 <b>OPERACIÓN (CUP):</b>
 💰 <b>Total Venta:</b> ${formatCurrency(totalCUP, 'CUP')}
@@ -2572,11 +2620,11 @@ export const getDailyExchangeRate = async () => {
       throw new Error("API did not return valid data in cupHistory[0].value");
     }
 
-    // Regla de Negocio: Redondeo a la decena más cercana
-    // Ejemplo: 514 -> 510, 515 -> 520
-    const finalRate = Math.round(latest / 10) * 10;
+    // 👇 CAMBIO AQUÍ: Usamos Math.ceil para forzar siempre hacia arriba
+    // Regla: 441 -> 450, 449 -> 450, 450 -> 450
+    const finalRate = Math.ceil(latest / 10) * 10;
 
-    console.log(`✅ Current Rate: ${latest} | Rounded Rate: ${finalRate}`);
+    console.log(`✅ Tasa Original: ${latest} | 📈 Tasa Ajustada (Techo): ${finalRate}`);
 
     return finalRate;
 

@@ -28,12 +28,22 @@ export const executeDailyUpdate = async () => {
     
     if (products.length > 0) {
         const updatePromises = products.map(product => {
-            const cost = Number(product.purchase_price);
-            const newSalePrice = cost * 2 * newRate;
+
+          const cost = Number(product.purchase_price);
+    
+    // 1. Calculamos el precio base (Costo * 2 * Tasa)
+    const rawSalePrice = cost * 2 * newRate;
+    
+    // 2. Aplicamos el redondeo a la centena más cercana
+    // Ejemplo: 3450 -> 3500 | 3420 -> 3400 | 9960 -> 10000
+    const roundedSalePrice = Math.round(rawSalePrice / 100) * 100;
+
+
             return prisma.products.update({
-                where: { id_product: product.id_product },
-                data: { sale_price: newSalePrice }
-            });
+        where: { id_product: product.id_product },
+        data: { sale_price: roundedSalePrice } // Guardamos el precio redondeado
+    });
+
         });
 
         await prisma.$transaction(updatePromises);

@@ -76,7 +76,7 @@ const setupCommands = async () => {
     bot.command('yearly', verifyAdmin, async (ctx) => {
         const d = await getAnnualReport();
         const roi = d.investment > 0 ? ((d.profit / d.investment) * 100).toFixed(1) : "0.0";
-        ctx.reply(`📈 <b>BALANCE ANUAL</b>\n${separator}\n🚢 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}\n💵 <b>UTILIDAD:</b> ${formatCurrency(d.profit)}\n📊 <b>ROI:</b> <code>${roi}%</code>\n${separator}\n💰 <b>NETO:</b> ${formatCurrency(d.netProfit)}`, { parse_mode: 'HTML' });
+        ctx.reply(`📈 <b>BALANCE ANUAL</b>\n${separator}\n📦 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}\n💵 <b>UTILIDAD:</b> ${formatCurrency(d.profit)}\n📊 <b>ROI:</b> <code>${roi}%</code>\n${separator}\n💰 <b>NETO:</b> ${formatCurrency(d.netProfit)}`, { parse_mode: 'HTML' });
     });
 };
 
@@ -131,7 +131,7 @@ ${separator}
 👤 <b>Vendedor:</b> ${sale.seller.name}
 📱 <b>Cliente:</b> <code>${sale.buyer_phone}</code>
 
-🛒 <b>ITEMS:</b>
+🛒 <b>PRODUCTOS:</b>
 ${items}${separator}
 💵 <b>OPERACIÓN (CUP):</b>
 💰 <b>Total Venta:</b> ${formatCurrency(totalCUP, 'CUP')}
@@ -216,10 +216,14 @@ export const notifyDailyPrices = async (seller, newRate) => {
     if (!bot || !seller.telegram_chat_id) return;
     let msg = `📢 <b>PRECIOS ACTUALIZADOS</b>\n🗓️ ${formatDate(new Date())}\n💱 Tasa: <b>${newRate} CUP</b>\n${separator}\n`;
     msg += `<i>Hola ${seller.name.split(' ')[0]}, aquí tus precios de hoy:</i>\n\n`;
+    
     seller.seller_products.forEach(sp => {
-        const p = Math.round(Number(sp.product.purchase_price) * 2 * newRate);
+             
+         // Aplicamos el mismo redondeo para que el mensaje del bot coincida con la DB
+         const p = sp.product.sale_price;
+
         msg += `📦 <b>${sp.product.name.toUpperCase()}</b>\n🏷️ <b>${new Intl.NumberFormat('en-US').format(p)} CUP</b>\n📊 Stock: <code>${sp.quantity}</code>\n───────────────────\n`;
-    });
+       });
     safeReply(seller.telegram_chat_id, msg);
 };
 

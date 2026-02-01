@@ -310,7 +310,21 @@ export const resolvers = {
     },
     deleteCategory: async (_, { id_category }, { user }) => {
       requireStorekeeper(user);
-      return prisma.categories.update({ where: { id_category }, data: { active: false } });
+      // Usamos una transacción para asegurarnos de que ambas cosas pasen o ninguna
+  return await prisma.$transaction(async (tx) => {
+    // 1. Borramos todos los vínculos de productos con esta categoría
+    // Esto hace que los productos que la tenían simplemente se queden sin ella
+    await tx.product_categories.deleteMany({
+      where: { id_category: id_category }
+    });
+
+    // 2. Marcamos la categoría como inactiva
+    return await tx.categories.update({
+      where: { id_category },
+      data: { active: false }
+    });
+  });
+      
     },
 
     // --- PRODUCTS ---

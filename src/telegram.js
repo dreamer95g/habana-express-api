@@ -156,7 +156,7 @@ export const notifySale = async (sale) => {
       const commUSD = totalUSD * (commPct / 100);
       const commCUP = commUSD * rate;
       const netUSD = totalUSD - costUSD - commUSD;
-      const titheCUP = (netUSD * 0.10) * rate;
+      const titheCUP = (netUSD * 0.20) * rate;
       
       // Dinero que el vendedor debe entregarte (Venta Total - Su Comisión)
       const cashToDeliverCUP = totalCUP - commCUP;
@@ -171,17 +171,17 @@ ${separator}
 
 🛒 <b>PRODUCTOS:</b>
 ${items}${separator}
-💵 <b>OPERACIÓN (CUP):</b>
+💸 <b>OPERACIÓN (CUP):</b>
 💰 <b>Total Venta:</b> ${formatCurrency(totalCUP, 'CUP')}
 🤝 <b>Comisión:</b>    -${formatCurrency(commCUP, 'CUP')}
 📥 <b>COBRAR A VENDEDOR:</b> <b>${formatCurrency(cashToDeliverCUP, 'CUP')}</b>
 
-📊 <b>BALANCE (USD):</b>
+💵 <b>BALANCE (USD):</b>
 🟢 <b>Ingreso:</b> ${formatCurrency(totalUSD)}
 🔴 <b>Costo:</b>   ${formatCurrency(costUSD)}
-🚀 <b>NETO:</b>    ${formatCurrency(netUSD)}
+💰 <b>NETO:</b>    ${formatCurrency(netUSD)}
 📈 <b>ROI:</b>     <code>${((netUSD/costUSD)*100).toFixed(1)}%</code>
-⛪ <b>DIEZMO:</b>   ${formatCurrency(titheCUP, 'CUP')}
+⛪ <b>PRIMICIA:</b>   ${formatCurrency(titheCUP, 'CUP')}
 `;
 
       const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
@@ -193,7 +193,7 @@ ${items}${separator}
 ${separator}
 ${items}${separator}
 💰 <b>TU COMISIÓN:</b> ${formatCurrency(commCUP, 'CUP')}
-💵 <b>ENTREGAR A CAJA:</b> <b>${formatCurrency(cashToDeliverCUP, 'CUP')}</b>
+💵 <b>ENTREGAR EN CAJA:</b> <b>${formatCurrency(cashToDeliverCUP, 'CUP')}</b>
 
 🚀 <i>¡Buen trabajo! Reporta el efectivo al cerrar.</i>
 `;
@@ -202,7 +202,7 @@ ${items}${separator}
       // 🅾️ CERTIFICADO DE GARANTÍA (Si aplica)
       if (warranties.length > 0) {
           let wTxt = "";
-          warranties.forEach(w => wTxt += `📦 <b>${w.name}</b>\n🔢 SKU: <code>${w.sku || 'N/A'}</code>\n`);
+          warranties.forEach(w => wTxt += `📦 <b>${w.name}</b>\n🗝 SKU: <code>${w.sku || 'N/A'}</code>\n`);
           
           const wMsg = `
 📃 <b>CERTIFICADO DE GARANTÍA</b>
@@ -214,7 +214,7 @@ ${separator}
 ${separator}
 <b>PRODUCTOS CUBIERTOS:</b>
 ${wTxt}${separator}
-ℹ️ <i>Cubre defectos de fábrica. No humedad ni golpes.</i>
+⚠ <i>Cubre defectos de fábrica, no humedad ni golpes.</i>
 `;
 
           admins.forEach(a => safeReply(a.telegram_chat_id, wMsg));

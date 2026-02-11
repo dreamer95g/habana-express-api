@@ -385,30 +385,46 @@ export const resolvers = {
 
     // --- INVENTORY ASSIGNMENT ---
     assignProductToSeller: async (_, { sellerId, productId, quantity }, { user }) => {
-      requireStorekeeper(user); 
-      
-      const product = await prisma.products.findUnique({ where: { id_product: productId } });
-      if (!product) throw new Error("Producto no encontrado");
-      
-      if (quantity > product.stock) {
-          throw new Error(` Stock global insuficiente. Disponible: ${product.stock}`);
-      }
+  requireStorekeeper(user); 
+  
+  const product = await prisma.products.findUnique({ where: { id_product: productId } });
+  if (!product) throw new Error("Producto no encontrado");
 
-      const existing = await prisma.seller_products.findFirst({ where: { id_seller: sellerId, id_product: productId } });
-      
-      if (existing) {
-        return prisma.seller_products.update({
-          where: { id_seller_product: existing.id_seller_product },
-          data: { quantity: { increment: quantity } },
-          include: { seller: true, product: true }
-        });
-      } else {
-        return prisma.seller_products.create({
-          data: { id_seller: sellerId, id_product: productId, quantity },
-          include: { seller: true, product: true },
-        });
-      }
-    },
+  // 1. Calcular cuánto tienen asignado TODOS los vendedores actualmente
+  const totalAssigned = await prisma.seller_products.aggregate({
+    _sum: { quantity: true },
+    where: { id_product: productId }
+  });
+
+  const assignedCount = totalAssigned._sum.quantity || 0;
+  
+  // 2. Calcular la disponibilidad real en el almacén (físico)
+  // Stock Global - Lo que ya está en la calle
+  const availableInWarehouse = Number(product.stock) - assignedCount;
+
+  // 3. VALIDACIÓN:
+  if (quantity > availableInWarehouse) {
+      throw new Error(`No hay suficiente mercancía en el estante. Disponible en almacén: ${availableInWarehouse}`);
+  }
+
+  // Si pasa la validación, procedemos con la asignación normal
+  const existing = await prisma.seller_products.findFirst({ 
+    where: { id_seller: sellerId, id_product: productId } 
+  });
+  
+  if (existing) {
+    return prisma.seller_products.update({
+      where: { id_seller_product: existing.id_seller_product },
+      data: { quantity: { increment: quantity } },
+      include: { seller: true, product: true }
+    });
+  } else {
+    return prisma.seller_products.create({
+      data: { id_seller: sellerId, id_product: productId, quantity },
+      include: { seller: true, product: true },
+    });
+  }
+},
 
     returnProductFromSeller: async (_, { sellerId, productId, quantity }, { user }) => {
       requireStorekeeper(user);
@@ -568,77 +584,94 @@ export const resolvers = {
 
     // --- RETURNS (DEVOLUCIONES) ---
     createReturn: async (_, { saleId, productId, quantity, reason, returnToStock }, { user }) => {
-       // Solo Admin o Storekeeper
-       if (user.role !== 'admin' && user.role !== 'storekeeper') {
-          throw new Error(" Access Denied.");
-       }
+  if (user.role !== 'admin' && user.role !== 'storekeeper') {
+    throw new Error("Acceso denegado.");
+  }
 
-       // 1. Validar Venta
-       const sale = await prisma.sales.findUnique({ where: { id_sale: saleId } });
-       if (!sale) throw new Error("Venta no encontrada");
-       if (sale.status === 'CANCELLED') throw new Error("No se pueden hacer devoluciones de ventas anuladas.");
+  return await prisma.$transaction(async (tx) => {
+    // 1. Obtener la venta con sus productos
+    const sale = await tx.sales.findUnique({
+      where: { id_sale: saleId },
+      include: { sale_products: true, seller: true }
+    });
 
-       // 2. Validar Item en la Venta
-       const soldItem = await prisma.sale_products.findFirst({
-          where: { id_sale: saleId, id_product: productId }
-       });
-       if (!soldItem || soldItem.quantity < quantity) {
-          throw new Error("Cantidad inválida para esta venta.");
-       }
+    if (!sale) throw new Error("Venta no encontrada");
+    if (sale.status === 'CANCELLED') throw new Error("La venta ya está anulada.");
 
-       // 3. Obtener info del producto para costo
-       const productInfo = await prisma.products.findUnique({ 
-           where: { id_product: productId } 
-       });
+    // 2. Obtener el producto específico de esa venta
+    const soldItem = await tx.sale_products.findFirst({
+      where: { id_sale: saleId, id_product: productId }
+    });
 
-       let calculatedLoss = 0;
-       if (!returnToStock) {
-           calculatedLoss = Number(productInfo.purchase_price) * quantity;
-       }
+    if (!soldItem || soldItem.quantity < quantity) {
+      throw new Error("La cantidad a devolver supera lo vendido.");
+    }
 
-       // 4. Transacción en Base de Datos
-       const resultReturn = await prisma.$transaction(async (tx) => {
-           // A. Crear Registro Devolución
-           const ret = await tx.returns.create({
-             data: { 
-                 id_sale: saleId, 
-                 id_product: productId, 
-                 quantity, 
-                 loss_usd: calculatedLoss,
-                 reason 
-             },
-             // 👇 CAMBIO IMPORTANTE: Incluimos al Vendedor (seller) dentro de la venta (sale)
-             include: { 
-                 product: true, 
-                 sale: { 
-                     include: { seller: true } 
-                 } 
-             }
-           });
+    // 3. Obtener info del producto (para saber su precio de venta actual)
+    const productInfo = await tx.products.findUnique({ where: { id_product: productId } });
 
-           // B. Si returnToStock es TRUE, devolvemos al Global
-           if (returnToStock) {
-               await tx.products.update({
-                 where: { id_product: productId },
-                 data: { 
-                     stock: { increment: quantity },
-                     active: true 
-                 }
-               });
-           }
+    // CALCULO FINANCIERO:
+    // ¿Cuánto dinero representa esta devolución en CUP? 
+    // Usamos el precio de venta actual del producto (que ya está en CUP)
+    const refundAmountCUP = Number(productInfo.sale_price) * quantity;
+    const lossUSD = !returnToStock ? (Number(productInfo.purchase_price) * quantity) : 0;
 
-           return ret;
-       });
+    // 4. CREAR EL REGISTRO DE DEVOLUCIÓN
+    const ret = await tx.returns.create({
+      data: {
+        id_sale: saleId,
+        id_product: productId,
+        quantity,
+        loss_usd: lossUSD,
+        reason
+      },
+      include: { product: true, sale: { include: { seller: true } } }
+    });
 
-       // 👇 NUEVO: Llamamos a la notificación pasando el booleano returnToStock
-       try { 
-           await notifyReturn(resultReturn, returnToStock); 
-       } catch (e) { 
-           console.error("Error enviando notificación Telegram:", e); 
-       }
+    // 5. ACTUALIZAR STOCK GLOBAL (Si el admin lo marcó como útil)
+    if (returnToStock) {
+      await tx.products.update({
+        where: { id_product: productId },
+        data: { stock: { increment: quantity }, active: true }
+      });
+    }
 
-       return resultReturn;
-    },
+    // 6. ACTUALIZAR LA VENTA (RESTAR EL PRODUCTO)
+    // A. Restamos cantidad del listado de la venta
+    if (soldItem.quantity === quantity) {
+      // Si devolvió todo el stock de este producto, borramos la relación
+      await tx.sale_products.delete({ where: { id_sale_product: soldItem.id_sale_product } });
+    } else {
+      // Si fue una devolución parcial, restamos la cantidad
+      await tx.sale_products.update({
+        where: { id_sale_product: soldItem.id_sale_product },
+        data: { quantity: { decrement: quantity } }
+      });
+    }
+
+    // B. Restar el dinero del total de la venta
+    const newTotalCUP = Number(sale.total_cup) - refundAmountCUP;
+
+    // 7. ¿QUEDAN MÁS PRODUCTOS EN LA VENTA?
+    const remainingItems = await tx.sale_products.count({ where: { id_sale: saleId } });
+
+    if (remainingItems === 0 || newTotalCUP <= 0) {
+      // Si ya no queda nada, marcamos la venta como CANCELADA
+      await tx.sales.update({
+        where: { id_sale: saleId },
+        data: { total_cup: 0, status: 'CANCELLED' }
+      });
+    } else {
+      // Si aún quedan otros productos, solo actualizamos el total
+      await tx.sales.update({
+        where: { id_sale: saleId },
+        data: { total_cup: newTotalCUP }
+      });
+    }
+
+    return ret;
+  });
+},
 
     // --- SHIPMENTS ---
     createShipment: (_, args, { user }) => { 

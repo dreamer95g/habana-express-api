@@ -206,6 +206,7 @@ ${items}${separator}
           
           const wMsg = `
 📃 <b>CERTIFICADO DE GARANTÍA</b>
+💼 <b>HABANA EXPRESS</b>
 🆔 <b>Ticket:</b> <code>#SALE-${sale.id_sale}</code>
 ${separator}
 📅 <b>Vence:</b> ${formatDate(addDays(new Date(), 7))}

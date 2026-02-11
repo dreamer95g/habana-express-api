@@ -114,66 +114,41 @@ export const checkExpiredWarranties = async () => {
     }
 };
 
-// export const initScheduler = () => {
-//   console.log("📅 Initializing Schedulers...");
-
-//   // 1. Chequeo de Tasa (Minuto a minuto)
-//   cron.schedule('* * * * *', async () => {
-//     try {
-//         const config = await prisma.system_configuration.findFirst();
-//         if (!config || !config.exchange_rate_sync_time) return;
-
-//         const now = new Date();
-//         const cubaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
-        
-//         const targetTime = new Date(config.exchange_rate_sync_time);
-
-//         if (cubaTime.getHours() === targetTime.getUTCHours() && 
-//             cubaTime.getMinutes() === targetTime.getUTCMinutes()) {
-//              console.log(`⚡ Executing Daily Price Update...`);
-//              await executeDailyUpdate();
-//         }
-
-//     } catch (error) {
-//         console.error("Scheduler Error:", error.message);
-//     }
-//   });
-
-//   // 2. Chequeo de Garantías (Diario a las 9 AM)
-//   cron.schedule('0 9 * * *', async () => {
-//       await checkExpiredWarranties();
-//   });
-
-//   console.log("✅ Scheduler services are running.");
-// };
 
 
 export const initScheduler = () => {
-  console.log("📅 Initializing Schedulers...");
+  console.log("📅 Initializing Schedulers (Exchange Rate: Every 3 days)...");
 
-  // 1. Chequeo de Tasa (Minuto a minuto)
+  // 1. Chequeo de Tasa (Se revisa cada minuto, pero solo ejecuta cada 3 días)
   cron.schedule('* * * * *', async () => {
     try {
         const config = await prisma.system_configuration.findFirst();
         if (!config || !config.exchange_rate_sync_time) return;
 
-        // 1. Obtener Hora Actual en Cuba en formato "HH:mm"
+        // 1. Obtener Fecha y Hora Actual en Cuba
         const now = new Date();
-        const cubaTimeStr = now.toLocaleTimeString("en-US", { 
-          timeZone: "America/Havana", 
+        const cubaDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
+        
+        // Formato "HH:mm" (Ej: "08:00")
+        const cubaTimeStr = cubaDate.toLocaleTimeString("en-US", { 
           hour12: false, 
           hour: '2-digit', 
           minute: '2-digit' 
         });
 
-        // 2. Obtener Hora de la DB y convertirla a "HH:mm"
-        // Prisma devuelve el objeto Date, usamos toISOString para sacar solo la hora
+        // 2. Obtener Hora objetivo de la DB (Ej: "08:00")
         const dbDate = new Date(config.exchange_rate_sync_time);
         const targetTimeStr = dbDate.toISOString().substring(11, 16); 
 
-        // 3. Comparar directamente los textos (Ej: "08:00" === "08:00")
-        if (cubaTimeStr === targetTimeStr) {
-             console.log(`⚡ Hora coincidente (${cubaTimeStr}). Ejecutando Actualización Diaria...`);
+        // 3. Lógica de "Cada 3 días"
+        // Calculamos los días pasados desde el 1 de Enero de 2026
+        const referenceDate = new Date('2026-01-01T00:00:00Z');
+        const diffInMs = cubaDate.getTime() - referenceDate.getTime();
+        const daysPassed = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+        // 4. Condición: Coincide la hora Y el día es múltiplo de 3
+        if (cubaTimeStr === targetTimeStr && daysPassed % 3 === 0) {
+             console.log(`⚡ Ciclo de 3 días cumplido (Día ${daysPassed}). Ejecutando actualización de tasa...`);
              await executeDailyUpdate();
         }
 
@@ -187,5 +162,5 @@ export const initScheduler = () => {
       await checkExpiredWarranties();
   });
 
-  console.log("✅ Scheduler services are running.");
+  console.log("✅ Scheduler services corriendo.");
 };

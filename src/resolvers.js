@@ -84,23 +84,27 @@ export const resolvers = {
       });
     },
 
-    catalogData: async () => {
+     catalogData: async () => {
       // 1. Obtener productos activos QUE TENGAN STOCK EN MANOS DE VENDEDORES
       const products = await prisma.products.findMany({
         where: { 
           active: true, 
-          // 👇 ESTA ES LA CLAVE: 
-          // Filtramos solo productos donde AL MENOS UN vendedor tenga cantidad > 0
           seller_products: {
             some: {
               quantity: { gt: 0 }
             }
           }
         },
+        // 👇 AGREGA ESTO AQUÍ: Necesitamos las categorías para filtrar en el front
+        include: {
+            product_categories: {
+                include: { category: true }
+            }
+        },
         orderBy: { date_added: 'desc' }
       });
 
-      // 2. Obtener configuración
+      // 2. Obtener configuración (sin cambios)
       const config = await prisma.system_configuration.findFirst();
 
       return {
@@ -111,7 +115,7 @@ export const resolvers = {
 
     // --- CATEGORIES ---
     categories: (_, __, { user }) => {
-      requireAuth(user);
+      // requireAuth(user);
       return prisma.categories.findMany({ 
         where: { active: true },
         include: { product_categories: true } 

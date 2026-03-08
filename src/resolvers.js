@@ -84,34 +84,65 @@ export const resolvers = {
       });
     },
 
-     catalogData: async () => {
-      // 1. Obtener productos activos QUE TENGAN STOCK EN MANOS DE VENDEDORES
+
+
+     // En src/resolvers.js (Reemplaza todo el bloque de catalogData)
+
+    catalogData: async () => {
+      // 1. Obtener productos activos QUE TENGAN STOCK
       const products = await prisma.products.findMany({
         where: { 
           active: true, 
-          seller_products: {
-            some: {
-              quantity: { gt: 0 }
-            }
-          }
+          seller_products: { some: { quantity: { gt: 0 } } }
         },
-        // 👇 AGREGA ESTO AQUÍ: Necesitamos las categorías para filtrar en el front
-        include: {
-            product_categories: {
-                include: { category: true }
-            }
-        },
+        include: { product_categories: { include: { category: true } } },
         orderBy: { date_added: 'desc' }
       });
 
-      // 2. Obtener configuración (sin cambios)
+      // 2. Obtener configuración
       const config = await prisma.system_configuration.findFirst();
+
+      // 3. CÁLCULO DE ESTADÍSTICAS PÚBLICAS
+      // A. Clientes únicos (agrupando por número de teléfono)
+      const uniqueCustomers = await prisma.sales.groupBy({
+         by: ['buyer_phone'],
+         where: { status: 'COMPLETED' }
+      });
+      const totalCustomers = uniqueCustomers.length;
+
+      // B. Total de productos vendidos (Histórico)
+      const totalSoldAgg = await prisma.sale_products.aggregate({
+         _sum: { quantity: true },
+         where: { sale: { status: 'COMPLETED' } }
+      });
+      const totalSoldItems = totalSoldAgg._sum.quantity || 0;
+
+      // C. Total de productos vendidos (Este Mes)
+      const now = new Date();
+      // Ajuste de inicio de mes
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      const monthSoldAgg = await prisma.sale_products.aggregate({
+         _sum: { quantity: true },
+         where: { 
+            sale: { 
+                status: 'COMPLETED',
+                sale_date: { gte: startOfMonth }
+            } 
+         }
+      });
+      const soldItemsThisMonth = monthSoldAgg._sum.quantity || 0;
 
       return {
         products,
-        companyPhone: config?.company_phone || ''
+        companyPhone: config?.company_phone || '',
+        totalCustomers,
+        totalSoldItems,
+        soldItemsThisMonth
       };
     },
+
+
+
 
     // --- CATEGORIES ---
     categories: (_, __, { user }) => {

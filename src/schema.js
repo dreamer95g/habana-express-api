@@ -40,6 +40,9 @@ export const typeDefs = gql`
   type CatalogData {
   products: [Product]
   companyPhone: String
+  totalCustomers: Int
+    totalSoldItems: Int
+    soldItemsThisMonth: Int
 }
 
   type User {

@@ -1,3 +1,4 @@
+// src/services/scheduler.js
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { getDailyExchangeRate } from './exchangeRate.js';
@@ -10,7 +11,7 @@ import {
 const prisma = new PrismaClient();
 
 export const executeDailyUpdate = async () => {
-  console.log("⏰ Starting Daily Price Update Routine...");
+  console.log("⏰ Iniciando rutina de actualización de precios (Hora Cuba)...");
 
   try {
     const newRate = await getDailyExchangeRate();
@@ -28,26 +29,22 @@ export const executeDailyUpdate = async () => {
     
     if (products.length > 0) {
         const updatePromises = products.map(product => {
-
-          const cost = Number(product.purchase_price);
-    
-    // 1. Calculamos el precio base (Costo * 2 * Tasa)
-    const rawSalePrice = cost * 2 * newRate;
-    
-    // 2. Aplicamos el redondeo a la centena más cercana
-    // Ejemplo: 3450 -> 3500 | 3420 -> 3400 | 9960 -> 10000
-    const roundedSalePrice = Math.round(rawSalePrice / 100) * 100;
-
+            const cost = Number(product.purchase_price);
+            
+            // 1. Calculamos el precio base (Costo * 2 * Tasa)
+            const rawSalePrice = cost * 2 * newRate;
+            
+            // 2. Aplicamos el redondeo a la centena más cercana
+            const roundedSalePrice = Math.round(rawSalePrice / 100) * 100;
 
             return prisma.products.update({
-        where: { id_product: product.id_product },
-        data: { sale_price: roundedSalePrice } // Guardamos el precio redondeado
-    });
-
+                where: { id_product: product.id_product },
+                data: { sale_price: roundedSalePrice }
+            });
         });
 
         await prisma.$transaction(updatePromises);
-        console.log(`✅ Prices updated for ${products.length} products.`);
+        console.log(`✅ Precios actualizados para ${products.length} productos.`);
 
         await notifyDailyUpdate(newRate, products.length);
 
@@ -64,7 +61,7 @@ export const executeDailyUpdate = async () => {
     }
 
   } catch (error) {
-    console.error("❌ CRITICAL ERROR during daily update:", error);
+    console.error("❌ ERROR CRÍTICO durante actualización de tasa:", error);
   }
 };
 
@@ -72,12 +69,17 @@ export const executeDailyUpdate = async () => {
  * Tarea 2: Chequeo de Garantías Vencidas
  */
 export const checkExpiredWarranties = async () => {
-    console.log("🛡️ Checking expired warranties...");
+    console.log("🛡️ Chequeando garantías vencidas...");
     try {
-        const today = new Date();
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 7);
+        // Obtenemos la fecha actual forzada a Cuba para que el VPS en Europa no afecte
+        const cubaTimeStr = new Date().toLocaleString("en-US", { timeZone: "America/Havana" });
+        const todayCuba = new Date(cubaTimeStr);
+        
+        // Restamos 7 días
+        const sevenDaysAgo = new Date(todayCuba);
+        sevenDaysAgo.setDate(todayCuba.getDate() - 7);
 
+        // Definimos inicio y fin del día
         const startOfDay = new Date(sevenDaysAgo.setHours(0, 0, 0, 0));
         const endOfDay = new Date(sevenDaysAgo.setHours(23, 59, 59, 999));
 
@@ -89,7 +91,6 @@ export const checkExpiredWarranties = async () => {
                 }
             },
             include: {
-                // 🔥 IMPORTANTE: Incluir Vendedor para notificarle
                 seller: true,
                 sale_products: {
                     include: { product: true }
@@ -103,52 +104,55 @@ export const checkExpiredWarranties = async () => {
                 .filter(p => p.warranty === true);
 
             if (warrantyProducts.length > 0) {
-                // Notificar a Admin y Vendedor
                 await notifyWarrantyExpiration(sale, warrantyProducts);
-                console.log(`✅ Warranty expired notification sent for Sale #${sale.id_sale}`);
+                console.log(`✅ Notificación de garantía enviada para Venta #${sale.id_sale}`);
             }
         }
 
     } catch (error) {
-        console.error("❌ Error checking warranties:", error);
+        console.error("❌ Error chequeando garantías:", error);
     }
 };
 
-
-
 export const initScheduler = () => {
-  console.log("📅 Initializing Schedulers (Exchange Rate: Every 3 days)...");
+  console.log("📅 Inicializando Tareas (Tasa: Cada 5 días | Zona Horaria: Cuba)...");
 
-  // 1. Chequeo de Tasa (Se revisa cada minuto, pero solo ejecuta cada 3 días)
+  // 1. Chequeo de Tasa (Se revisa cada minuto, se ejecuta cada 5 días a la hora exacta)
   cron.schedule('* * * * *', async () => {
     try {
         const config = await prisma.system_configuration.findFirst();
         if (!config || !config.exchange_rate_sync_time) return;
 
-        // 1. Obtener Fecha y Hora Actual en Cuba
+        // 1. Obtener la hora actual exacta en Cuba (Formato HH:mm)
         const now = new Date();
-        const cubaDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
-        
-        // Formato "HH:mm" (Ej: "08:00")
-        const cubaTimeStr = cubaDate.toLocaleTimeString("en-US", { 
+        const cubaTimeStr = now.toLocaleTimeString("en-US", { 
+          timeZone: "America/Havana", 
           hour12: false, 
           hour: '2-digit', 
           minute: '2-digit' 
         });
 
-        // 2. Obtener Hora objetivo de la DB (Ej: "08:00")
+        // 2. Extraer la hora de la base de datos FORZÁNDOLA a la zona de Cuba.
+        // (Esto arregla el error del VPS en Moldavia)
         const dbDate = new Date(config.exchange_rate_sync_time);
-        const targetTimeStr = dbDate.toISOString().substring(11, 16); 
+        const targetTimeStr = dbDate.toLocaleTimeString("en-US", { 
+          timeZone: "America/Havana", 
+          hour12: false, 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
 
-        // 3. Lógica de "Cada 3 días"
-        // Calculamos los días pasados desde el 1 de Enero de 2026
+        // 3. Calcular los días que han pasado usando la fecha de Cuba
+        const cubaDateOnly = new Date(now.toLocaleString("en-US", { timeZone: "America/Havana" }));
+        cubaDateOnly.setHours(0, 0, 0, 0); // Solo queremos los días enteros
+        
         const referenceDate = new Date('2026-01-01T00:00:00Z');
-        const diffInMs = cubaDate.getTime() - referenceDate.getTime();
+        const diffInMs = cubaDateOnly.getTime() - referenceDate.getTime();
         const daysPassed = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
-        // 4. Condición: Coincide la hora Y el día es múltiplo de 3
-        if (cubaTimeStr === targetTimeStr && daysPassed % 3 === 0) {
-             console.log(`⚡ Ciclo de 3 días cumplido (Día ${daysPassed}). Ejecutando actualización de tasa...`);
+        // 4. Condición: Coincide la hora de Cuba Y el día es múltiplo de 5
+        if (cubaTimeStr === targetTimeStr && daysPassed % 5 === 0) {
+             console.log(`⚡ Ciclo de 5 días cumplido (Día ${daysPassed}). Hora Cuba: ${cubaTimeStr}. Actualizando...`);
              await executeDailyUpdate();
         }
 
@@ -157,9 +161,13 @@ export const initScheduler = () => {
     }
   });
 
-  // 2. Chequeo de Garantías (Diario a las 9 AM)
+  // 2. Chequeo de Garantías (Diario a las 9:00 AM)
+  // Le pasamos el parámetro de "timezone" a node-cron para que el VPS no se confunda
   cron.schedule('0 9 * * *', async () => {
       await checkExpiredWarranties();
+  }, {
+      scheduled: true,
+      timezone: "America/Havana" // ¡Esto asegura que se ejecute a las 9 AM de Cuba, no de Europa!
   });
 
   console.log("✅ Scheduler services corriendo.");

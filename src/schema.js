@@ -36,6 +36,7 @@ type CatalogData {
   totalCustomers: Int
   totalSoldItems: Int
   soldItemsThisMonth: Int
+  companyName: String
  
 }
 

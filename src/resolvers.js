@@ -136,6 +136,7 @@ export const resolvers = {
       return {
         products,
         companyPhone: config?.company_phone || '',
+        companyName: config?.company_name || 'Habana Express',
         totalCustomers,
         totalSoldItems,
         soldItemsThisMonth
@@ -267,10 +268,20 @@ export const resolvers = {
       };
     },
     
-    systemConfiguration: (_, __, { user }) => {
-      requireAuth(user); 
-      return prisma.system_configuration.findMany();
+    systemConfiguration: async (_, __, { user }) => {
+      // 🚀 1. Quitamos el requireAuth para que el Login pueda leer el logo y nombre
+      const configs = await prisma.system_configuration.findMany();
+      
+      // 🔒 2. SEGURIDAD: Ocultamos el token del bot de Telegram si no hay sesión o no es admin
+      return configs.map(config => ({
+          ...config,
+          telegram_bot_token: (user && user.role === 'admin') 
+              ? config.telegram_bot_token 
+              : "OCULTO_POR_SEGURIDAD"
+      }));
     },
+
+
     monthlyReport: async (_, __, { user }) => {
       requireAdmin(user);
       return await getMonthlyReport();

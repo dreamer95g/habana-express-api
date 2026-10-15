@@ -15,6 +15,10 @@ import { v2 as cloudinary } from 'cloudinary';
 import { spawn } from 'child_process';
 import { URL } from 'url'; 
 
+import { exec } from 'child_process';
+import util from 'util';
+const execPromise = util.promisify(exec);
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -92,6 +96,32 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter });
 
+
+
+// ---------------------------------------------------------
+// CONFIGURACIÓN MULTER (Archivos SQL para Restauración)
+// ---------------------------------------------------------
+const sqlStorage = multer.diskStorage({
+  destination: (req, file, cb) => { 
+    cb(null, 'uploads/'); 
+  },
+  filename: (req, file, cb) => {
+    cb(null, 'restore-' + Date.now() + '.sql');
+  }
+});
+
+const sqlFilter = (req, file, cb) => {
+  // Aceptamos archivos terminados en .sql o genéricos de texto
+  if (file.originalname.endsWith('.sql') || file.mimetype === 'application/sql' || file.mimetype === 'application/octet-stream') {
+    cb(null, true);
+  } else {
+    cb(new Error('Solo se permiten archivos SQL.'), false);
+  }
+};
+
+const uploadSql = multer({ storage: sqlStorage, fileFilter: sqlFilter });
+
+
 // ---------------------------------------------------------
 // 3️⃣ ENDPOINT DE SUBIDA (Debuggeado)
 // ---------------------------------------------------------
@@ -151,6 +181,72 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     // Devolver el error real al frontend para que lo veas en la consola del navegador
     res.status(500).json({ 
       error: 'Error interno del servidor', 
+      details: error.message 
+    });
+  }
+});
+
+// ---------------------------------------------------------
+// 🆕 ENDPOINT DE RESTAURACIÓN (Base de Datos)
+// ---------------------------------------------------------
+app.post('/api/restore', uploadSql.single('file'), async (req, res) => {
+  console.log("📥 Iniciando proceso de restauración de la base de datos...");
+
+  // 1. Seguridad: Verificar Token
+  const token = req.headers.authorization || '';
+  const user = getUserFromToken(token);
+
+  if (!user || user.role !== 'admin') {
+    if (req.file) fs.unlinkSync(req.file.path); // Borrar archivo si no es admin
+    return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se subió ningún archivo SQL.' });
+  }
+
+  // 2. Obtener credenciales desde DATABASE_URL (.env)
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    fs.unlinkSync(req.file.path);
+    return res.status(500).json({ error: 'DATABASE_URL no configurada.' });
+  }
+
+  try {
+    const parsedUrl = new URL(dbUrl);
+    const username = parsedUrl.username;
+    const password = parsedUrl.password;
+    const host = parsedUrl.hostname;
+    const port = parsedUrl.port || '3306';
+    const database = parsedUrl.pathname.substring(1);
+
+    // Ruta absoluta del archivo subido (necesaria para Windows cmd)
+    const filePath = path.resolve(req.file.path);
+
+    // 3. Construir comando MySQL para Laragon/Windows
+    // Usamos comillas en filePath por si la ruta tiene espacios (ej: "Habana Express Store")
+    const cmd = `mysql -h ${host} -P ${port} -u ${username} -p${password} ${database} < "${filePath}"`;
+
+    // 4. Ejecutar la restauración
+    await execPromise(cmd);
+
+    console.log('✅ Base de datos restaurada con éxito.');
+
+    // 5. Limpieza: Borrar el archivo temporal
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    res.status(200).json({ message: 'Sistema restaurado exitosamente.' });
+
+  } catch (error) {
+    console.error("❌ Error Crítico Restaurando DB:", error);
+    
+    // Limpieza en caso de fallo
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({ 
+      error: 'Error interno ejecutando la restauración.', 
       details: error.message 
     });
   }

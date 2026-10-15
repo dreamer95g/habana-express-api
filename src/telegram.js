@@ -31,7 +31,7 @@ const addDays = (date, days) => {
 
 const separator = "──────────────";
 
-const safeReply = async (chatId, message) => {
+export const safeReply = async (chatId, message) => {
     if (!bot || !chatId) return; 
     try {
         await bot.telegram.sendMessage(chatId, message, { parse_mode: 'HTML' });
@@ -68,54 +68,67 @@ const setupCommands = async () => {
     };
 
     // 1. REPORTE MENSUAL
-bot.command('monthly', verifyAdmin, async (ctx) => {
-    try {
-        const d = await getMonthlyReport();
-        const roi = d.roiPercentage || 0;
-        const net = d.netProfit || 0; // Balance real (Ventas - Todo)
-        
-        const statusIcon = net >= 0 ? "🟢" : "🔴";
-        const trendIcon = roi >= 30 ? "🚀" : (roi > 0 ? "📈" : "📉");
+    bot.command('monthly', verifyAdmin, async (ctx) => {
+        try {
+            const d = await getMonthlyReport();
+            const net = d.netProfit || 0; 
+            
+            // 🚀 CORRECCIÓN: Calculamos el ROI aquí mismo
+            const roi = d.investment > 0 ? ((net / d.investment) * 100).toFixed(1) : (net > 0 ? 100 : 0);
+            
+            // Calculamos la Primicia sobre el neto si hay ganancia
+            const primicia = net > 0 ? (net * 0.30) : 0;
+            const dineroDueño = net > 0 ? (net * 0.70) : net;
 
-        const message = `
+            const statusIcon = net >= 0 ? "🟢" : "🔴";
+            const trendIcon = roi >= 30 ? "🚀" : (roi > 0 ? "📈" : "📉");
+
+            const message = `
 📊 <b>RESUMEN MENSUAL</b>
 ${separator}
 💰 <b>VENTAS:</b> ${formatCurrency(d.income)}
 📦 <b>INVERSIÓN:</b> ${formatCurrency(d.investment)}
 ${separator}
-💵 <b>UTILIDAD NETA:</b> ${formatCurrency(d.profit)}
-💹 <b>BALANCE REAL:</b> ${formatCurrency(net)}
+💸 <b>UTILIDAD NETA:</b> ${formatCurrency(net)}
 ${trendIcon} <b>ROI:</b> <code>${roi}%</code>
+
+<b>DISTRIBUCIÓN DEL NETO:</b>
+⛪ <b>Primicia (30%):</b> ${formatCurrency(primicia)}
+💼 <b>Tu Ganancia (70%):</b> ${formatCurrency(dineroDueño)}
 
 ${statusIcon} <b>ESTADO:</b> ${net >= 0 ? 'EN GANANCIA' : 'RECUPERANDO INVERSIÓN'}
 `;
-        ctx.reply(message, { parse_mode: 'HTML' });
-    } catch (e) {
-        ctx.reply("❌ Error generando reporte mensual.");
-    }
-});
+            ctx.reply(message, { parse_mode: 'HTML' });
+        } catch (e) {
+            ctx.reply("❌ Error generando reporte mensual.");
+        }
+    });
 
-// 2. REPORTE ANUAL
-bot.command('yearly', verifyAdmin, async (ctx) => {
-    try {
-        const d = await getAnnualReport();
-        const roi = ((d.totalNetProfit / d.investment) * 100).toFixed(1);
-        
-        const message = `
+    // 2. REPORTE ANUAL
+    bot.command('yearly', verifyAdmin, async (ctx) => {
+        try {
+            const d = await getAnnualReport();
+            const net = d.totalNetProfit || 0;
+            const roi = d.investment > 0 ? ((net / d.investment) * 100).toFixed(1) : 100;
+            
+            const primiciaAnual = net > 0 ? (net * 0.30) : 0;
+            
+            const message = `
 📈 <b>BALANCE ANUAL ${d.year}</b>
 ${separator}
 🛒 <b>VENTAS TOTALES:</b> ${formatCurrency(d.income)}
 ✈ <b>INVERSIÓN TOTAL:</b> ${formatCurrency(d.investment)}
 ${separator}
-💰 <b>UTILIDAD NETA:</b> ${formatCurrency(d.totalNetProfit)}
+💰 <b>UTILIDAD NETA:</b> ${formatCurrency(net)}
 📊 <b>ROI ANUAL:</b> <code>${roi}%</code>
 
+⛪ <b>TOTAL APORTADO (30%):</b> ${formatCurrency(primiciaAnual)}
 `;
-        ctx.reply(message, { parse_mode: 'HTML' });
-    } catch (e) {
-        ctx.reply("❌ Error generando reporte anual.");
-    }
-});
+            ctx.reply(message, { parse_mode: 'HTML' });
+        } catch (e) {
+            ctx.reply("❌ Error generando reporte anual.");
+        }
+    });
 };
 
 // --- 🚀 INICIO ---
@@ -133,6 +146,7 @@ export const initTelegramBot = async () => {
 // --- 🔔 NOTIFICACIONES DEL SISTEMA ---
 
 // 1. NOTIFICACIÓN DE VENTAS (ADMIN & SELLER)
+// 1. NOTIFICACIÓN DE VENTAS (ADMIN & SELLER)
 export const notifySale = async (sale) => {
   if (!bot) return;
   try {
@@ -148,18 +162,34 @@ export const notifySale = async (sale) => {
       const warranties = [];
 
       sale.sale_products.forEach(sp => {
-          items += `▫️ <b>${sp.quantity}x</b> ${sp.product.name}\n`;
+          items += `▪️ <b>${sp.quantity}x</b> ${sp.product.name}\n`;
           costUSD += (Number(sp.product.purchase_price) * sp.quantity);
           if (sp.product.warranty) warranties.push(sp.product);
       });
 
-      const commUSD = totalUSD * (commPct / 100);
-      const commCUP = commUSD * rate;
-      const netUSD = totalUSD - costUSD - commUSD;
-      const titheCUP = (netUSD * 0.20) * rate;
+      // --- NUEVA LÓGICA DE CÁLCULO Y REDONDEO ---
       
-      // Dinero que el vendedor debe entregarte (Venta Total - Su Comisión)
+      // 1. Comisión del Vendedor (Redondeada a la centena más cercana)
+      const rawCommCUP = totalCUP * (commPct / 100);
+      const commCUP = Math.round(rawCommCUP / 100) * 100;
+      
+      // 2. Efectivo a Entregar a Caja 
+      // (Siempre será cerrado porque totalCUP es cerrado y commCUP también)
       const cashToDeliverCUP = totalCUP - commCUP;
+      
+      // 3. Ganancia Neta del Dueño
+      // El dueño recibe el cashToDeliverCUP y tiene que separar el costo de la mercancía.
+      const costCUP = costUSD * rate;
+      const netCUP = cashToDeliverCUP - costCUP;
+      const netUSD = netCUP / rate; // Lo pasamos a USD para el reporte
+      
+      // 4. Primicia (30% de la Ganancia Neta, redondeada a la centena)
+      // Verificamos que haya ganancia (netCUP > 0) para calcularla
+      let titheCUP = 0;
+      if (netCUP > 0) {
+          const rawTitheCUP = netCUP * 0.30;
+          titheCUP = Math.round(rawTitheCUP / 100) * 100;
+      }
 
       // 🅰️ MENSAJE PARA EL ADMIN
       const adminMsg = `
@@ -177,11 +207,11 @@ ${items}${separator}
 📥 <b>COBRAR A VENDEDOR:</b> <b>${formatCurrency(cashToDeliverCUP, 'CUP')}</b>
 
 💵 <b>BALANCE (USD):</b>
-🟢 <b>Ingreso:</b> ${formatCurrency(totalUSD)}
-🔴 <b>Costo:</b>   ${formatCurrency(costUSD)}
+🟢 <b>Ingreso:</b> ${formatCurrency(cashToDeliverCUP / rate)}
+🔴 <b>Costo:</b>   -${formatCurrency(costUSD)}
 💰 <b>NETO:</b>    ${formatCurrency(netUSD)}
-📈 <b>ROI:</b>     <code>${((netUSD/costUSD)*100).toFixed(1)}%</code>
-⛪ <b>PRIMICIA:</b>   ${formatCurrency(titheCUP, 'CUP')}
+📈 <b>ROI:</b>     <code>${costUSD > 0 ? ((netUSD/costUSD)*100).toFixed(1) : 100}%</code>
+⛪ <b>PRIMICIA (30%):</b>   ${formatCurrency(titheCUP, 'CUP')}
 `;
 
       const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
@@ -199,13 +229,13 @@ ${items}${separator}
 `;
       if (sale.seller?.telegram_chat_id) safeReply(sale.seller.telegram_chat_id, sellerMsg);
 
-      // 🅾️ CERTIFICADO DE GARANTÍA (Si aplica)
+      // 🅲 CERTIFICADO DE GARANTÍA (Si aplica)
       if (warranties.length > 0) {
           let wTxt = "";
-          warranties.forEach(w => wTxt += `📦 <b>${w.name}</b>\n🗝 SKU: <code>${w.sku || 'N/A'}</code>\n`);
+          warranties.forEach(w => wTxt += `📦 <b>${w.name}</b>\n🏷 SKU: <code>${w.sku || 'N/A'}</code>\n`);
           
           const wMsg = `
-📃 <b>CERTIFICADO DE GARANTÍA</b>
+📄 <b>CERTIFICADO DE GARANTÍA</b>
 💼 <b>HABANA EXPRESS</b>
 🆔 <b>Ticket:</b> <code>#SALE-${sale.id_sale}</code>
 ${separator}
@@ -215,7 +245,7 @@ ${separator}
 ${separator}
 <b>PRODUCTOS CUBIERTOS:</b>
 ${wTxt}${separator}
-⚠ <i>Cubre defectos de fábrica, no humedad ni golpes.</i>
+⚠️ <i>Cubre defectos de fábrica, no humedad ni golpes.</i>
 `;
 
           admins.forEach(a => safeReply(a.telegram_chat_id, wMsg));

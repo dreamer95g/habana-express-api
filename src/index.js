@@ -49,7 +49,9 @@ app.use(cors({
 origin: [
  "http://localhost:5173", 
  "https://habana-express-2026.vercel.app", 
- "https://natalya-euphoric-unseverely.ngrok-free.dev" ], 
+ "https://natalya-euphoric-unseverely.ngrok-free.dev",
+ "http://habana-express.home" ], 
+ 
  credentials: true, 
  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: [

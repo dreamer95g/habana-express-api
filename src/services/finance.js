@@ -15,53 +15,53 @@ export const calculateProfitInPeriod = async (startDate, endDate) => {
   const config = await prisma.system_configuration.findFirst();
   const commissionPct = config ? Number(config.seller_commission_percentage) : 0;
 
-  // 1. Obtener Envíos
-  const shipments = await prisma.shipments.findMany({
-    where: { shipment_date: { gte: startDate, lte: endDate } },
-  });
+  const shipments = await prisma.shipments.findMany({ where: { shipment_date: { gte: startDate, lte: endDate } } });
+  const sales = await prisma.sales.findMany({ where: { sale_date: { gte: startDate, lte: endDate }, status: 'COMPLETED' } });
+  const returns = await prisma.returns.findMany({ where: { return_date: { gte: startDate, lte: endDate } } });
+  const expenses = await prisma.expenses.findMany({ where: { date: { gte: startDate, lte: endDate } } });
 
-  // 2. Obtener Ventas
-  const sales = await prisma.sales.findMany({
-    where: { sale_date: { gte: startDate, lte: endDate }, status: 'COMPLETED' },
-  });
-
-  // 3. Obtener Devoluciones
-  const returns = await prisma.returns.findMany({
-    where: { return_date: { gte: startDate, lte: endDate } },
-  });
-
-  // --- CÁLCULO INVERSIÓN ---
+  // 1. INVERSIÓN
   let totalInvestmentUSD = 0;
   shipments.forEach(ship => {
     const rate = Number(ship.exchange_rate) || 1;
-    const customsUsd = Number(ship.customs_fee_cup) / rate;
-    totalInvestmentUSD += Number(ship.shipping_cost_usd) + Number(ship.merchandise_cost_usd) + customsUsd;
+    totalInvestmentUSD += Number(ship.shipping_cost_usd) + Number(ship.merchandise_cost_usd) + (Number(ship.customs_fee_cup) / rate);
   });
 
-  // --- CÁLCULO VENTAS ---
+  // 2. VENTAS Y COMISIONES (Aplicando el redondeo EXACTO a la centena por cada venta)
   let totalSalesUSD = 0;
+  let totalCommissionsUSD = 0;
+
   sales.forEach(sale => {
     const rate = Number(sale.exchange_rate) || 1;
-    totalSalesUSD += (Number(sale.total_cup) / rate);
+    const saleCup = Number(sale.total_cup);
+    
+    totalSalesUSD += (saleCup / rate);
+
+    // Replicar la regla exacta del bot de Telegram
+    const rawCommCUP = saleCup * (commissionPct / 100);
+    const commCUP = Math.round(rawCommCUP / 100) * 100;
+    
+    totalCommissionsUSD += (commCUP / rate);
   });
 
-  // --- GASTOS ---
-  const totalCommissionsUSD = totalSalesUSD * (commissionPct / 100);
+  // 3. MERMAS Y GASTOS (OPEX)
   let returnLossesUSD = 0;
   returns.forEach(ret => { returnLossesUSD += Number(ret.loss_usd); });
+  
+  let totalExpensesUSD = 0;
+  expenses.forEach(exp => { totalExpensesUSD += Number(exp.amount_usd); });
 
-  // UTILIDAD REAL
-  const realProfit = totalSalesUSD - (totalInvestmentUSD + totalCommissionsUSD + returnLossesUSD);
+  // 4. UTILIDAD REAL
+  const realProfit = totalSalesUSD - (totalInvestmentUSD + totalCommissionsUSD + returnLossesUSD + totalExpensesUSD);
 
   return {
     income: roundInt(totalSalesUSD) || 0,
     investment: roundInt(totalInvestmentUSD) || 0,
-    // profit es para el gráfico (no menor a 0)
     profit: realProfit > 0 ? roundInt(realProfit) : 0, 
-    // netProfit es el valor real (puede ser negativo)
     netProfit: roundInt(realProfit) || 0 
   };
 };
+
 /**
  * Reporte Mensual
  */

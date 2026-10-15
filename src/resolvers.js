@@ -4,6 +4,7 @@ import { hashPassword, comparePassword, createToken } from './auth.js';
 import { getMonthlyReport, getAnnualReport, calculateTopSellers } from './services/finance.js';
 import { notifySale, notifyReturn, notifyStockDepletion } from './telegram.js';
 import { executeDailyUpdate } from './services/scheduler.js'; 
+import { getElToqueRates } from './services/exchangeRate.js';
 
 const prisma = new PrismaClient();
 
@@ -153,6 +154,12 @@ export const resolvers = {
       });
     },
 
+    // --- EXPENSES ---
+    expenses: (_, __, { user }) => {
+      requireAdmin(user);
+      return prisma.expenses.findMany({ orderBy: { date: 'desc' } });
+    },
+
     // --- SALES & RETURNS ---
     sales: (_, __, { user }) => {
       requireStorekeeper(user); 
@@ -250,10 +257,13 @@ export const resolvers = {
         totalItemsSold = soldAggregation._sum.quantity || 0;
       }
 
+      const liveRates = await getElToqueRates();
+
       return {
         exchangeRate: config?.default_exchange_rate || 0,
         activeProductsCount,
-        totalItemsSold
+        totalItemsSold,
+        liveRates: liveRates || { usdt: 0, usd: 0, eur: 0 }
       };
     },
     
@@ -312,6 +322,44 @@ export const resolvers = {
 
       return prisma.users.update({ where: { id_user }, data: dataToUpdate });
     },
+
+
+
+    // --- EXPENSES ---
+    createExpense: (_, { input }, { user }) => {
+      requireAdmin(user);
+      
+      const expenseDate = input.date ? new Date(input.date) : new Date();
+      
+      return prisma.expenses.create({ 
+        data: {
+          description: input.description,
+          amount_usd: input.amount_usd,
+          category: input.category,
+          date: expenseDate
+        } 
+      });
+    },
+
+    updateExpense: async (_, { id_expense, input }, { user }) => {
+      requireAdmin(user);
+      
+      const dataToUpdate = { ...input };
+      if (input.date) {
+        dataToUpdate.date = new Date(input.date);
+      }
+
+      return await prisma.expenses.update({ 
+        where: { id_expense }, 
+        data: dataToUpdate 
+      });
+    },
+    
+    deleteExpense: async (_, { id_expense }, { user }) => {
+      requireAdmin(user);
+      return await prisma.expenses.delete({ where: { id_expense } });
+    },
+
 
     deleteUser: async (_, { id_user }, { user }) => {
       requireAdmin(user);

@@ -5,18 +5,31 @@ import { getDailyExchangeRate } from './exchangeRate.js';
 import { 
     notifyDailyUpdate, 
     notifyDailyPrices, 
-    notifyWarrantyExpiration 
+    notifyWarrantyExpiration,
+    safeReply 
 } from '../telegram.js';
 
 const prisma = new PrismaClient();
 
+
+
+
+
 export const executeDailyUpdate = async () => {
-  console.log("⏰ Iniciando rutina de actualización de precios (Hora Cuba)...");
+  console.log("⏰ Iniciando actualización de precios...");
 
   try {
     const newRate = await getDailyExchangeRate();
-    if (!newRate) return;
+    
+    // Si la tasa es null o 0, notificamos el error por Telegram y abortamos
+    if (!newRate) {
+      console.log("⚠️ No se pudo obtener la tasa de cambio. Cancelando.");
+      const admins = await prisma.users.findMany({ where: { role: 'admin', telegram_chat_id: { not: null } } });
+      admins.forEach(u => safeReply(u.telegram_chat_id, "⚠️ <b>ERROR DE SINCRONIZACIÓN</b>\nNo se pudo obtener la tasa."));
+      return; 
+    }
 
+    // 1. Actualizar configuración global
     const config = await prisma.system_configuration.findFirst();
     if (config) {
       await prisma.system_configuration.update({
@@ -27,14 +40,11 @@ export const executeDailyUpdate = async () => {
 
     const products = await prisma.products.findMany({ where: { active: true } });
     
+    // 2. Actualizar precios de los productos
     if (products.length > 0) {
         const updatePromises = products.map(product => {
             const cost = Number(product.purchase_price);
-            
-            // 1. Calculamos el precio base (Costo * 2 * Tasa)
             const rawSalePrice = cost * 2 * newRate;
-            
-            // 2. Aplicamos el redondeo a la centena más cercana
             const roundedSalePrice = Math.round(rawSalePrice / 100) * 100;
 
             return prisma.products.update({
@@ -45,9 +55,14 @@ export const executeDailyUpdate = async () => {
 
         await prisma.$transaction(updatePromises);
         console.log(`✅ Precios actualizados para ${products.length} productos.`);
+    }
 
-        await notifyDailyUpdate(newRate, products.length);
+    // 🚀 3. RECUPERAR NOTIFICACIÓN AL ADMIN
+    // Esto envía el mensaje exacto de tu imagen
+    await notifyDailyUpdate(newRate, products.length);
 
+    // 🚀 4. RECUPERAR NOTIFICACIONES A VENDEDORES
+    if (products.length > 0) {
         const sellers = await prisma.users.findMany({
             where: { role: 'seller', active: true, telegram_chat_id: { not: null } },
             include: { seller_products: { include: { product: true } } }

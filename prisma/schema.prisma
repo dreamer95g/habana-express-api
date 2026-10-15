@@ -167,3 +167,19 @@ enum SaleStatus {
   COMPLETED
   CANCELLED
 }
+
+model expenses {
+  id_expense  Int             @id @default(autoincrement())
+  description String
+  amount_usd  Decimal         @db.Decimal(10, 2)
+  category    ExpenseCategory
+  date        DateTime        @default(now())
+}
+
+enum ExpenseCategory {
+  VPS
+  DOMAIN
+  INTERNET
+  MARKETING
+  OTHER
+}

@@ -18,6 +18,28 @@ export const typeDefs = gql`
     CANCELLED
   }
 
+type LiveRates {
+    usdt: Float
+   
+  }
+
+  type DashboardStats {
+    exchangeRate: Float!
+    activeProductsCount: Int!
+    totalItemsSold: Int!
+    liveRates: LiveRates  # <--- Nuevo campo
+  }
+
+type CatalogData {
+  products: [Product]
+  companyPhone: String
+  totalCustomers: Int
+  totalSoldItems: Int
+  soldItemsThisMonth: Int
+ 
+}
+
+
   type SystemConfiguration {
     id_config: Int!
     company_name: String!
@@ -141,11 +163,7 @@ export const typeDefs = gql`
     notes: String
   }
 
-  type DashboardStats {
-    exchangeRate: Float!
-    activeProductsCount: Int!
-    totalItemsSold: Int!
-  }
+ 
 
   type SellerProduct {
     id_seller_product: Int!
@@ -195,6 +213,13 @@ export const typeDefs = gql`
     password_hash: String!
     telegram_chat_id: String
     role: Role!
+  }
+
+  input UpdateExpenseInput {
+    description: String
+    amount_usd: Float
+    category: ExpenseCategory
+    date: String
   }
 
  input UpdateSaleInput {
@@ -271,9 +296,32 @@ export const typeDefs = gql`
     active: Boolean
   }
 
+  input CreateExpenseInput {
+    description: String!
+    amount_usd: Float!
+    category: ExpenseCategory!
+    date: String
+  }
+
   input SaleItemInput {
     productId: Int!
     quantity: Int!
+  }
+
+  enum ExpenseCategory {
+    VPS
+    DOMAIN
+    INTERNET
+    MARKETING
+    OTHER
+  }
+
+  type Expense {
+    id_expense: Int!
+    description: String!
+    amount_usd: Float!
+    category: ExpenseCategory!
+    date: String
   }
 
   # --- QUERY & MUTATION ---
@@ -297,6 +345,7 @@ export const typeDefs = gql`
     topSellers(period: String!): [TopSeller]
     dashboardStats: DashboardStats
     catalogData: CatalogData
+    expenses: [Expense]
   }
 
   type Mutation {
@@ -350,5 +399,9 @@ export const typeDefs = gql`
     
     updateSystemConfiguration(id_config: Int!, input: UpdateSystemConfigurationInput!): SystemConfiguration
     triggerPriceSync: Boolean
+
+    createExpense(input: CreateExpenseInput!): Expense
+    deleteExpense(id_expense: Int!): Expense
+    updateExpense(id_expense: Int!, input: UpdateExpenseInput!): Expense
   }
 `;

@@ -213,6 +213,77 @@ export const resolvers = {
   });
 },
 
+ bestSellersYear: async (_, __, { user }) => {
+      requireAuth(user);
+
+      // 1. Determinar el rango del año actual en hora de Cuba
+      //    (Consistente con la lógica de finance.js)
+      const cubaTime = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Havana" }));
+      const currentYear = cubaTime.getFullYear();
+      const startOfYear = new Date(currentYear, 0, 1, 0, 0, 0);
+      const endOfYear   = new Date(currentYear, 11, 31, 23, 59, 59);
+
+      // 2. Traer todas las ventas COMPLETED del año con sus productos
+      const sales = await prisma.sales.findMany({
+        where: {
+          sale_date: { gte: startOfYear, lte: endOfYear },
+          status: 'COMPLETED'
+        },
+        include: {
+          sale_products: {
+            include: { product: true }
+          }
+        }
+      });
+
+      // 3. Acumular métricas por producto
+      const productStats = {};
+
+      sales.forEach(sale => {
+        const rate     = Number(sale.exchange_rate) || 1;
+        const totalCUP = Number(sale.total_cup);
+        const totalUnitsInSale = sale.sale_products.reduce((acc, sp) => acc + sp.quantity, 0);
+        if (totalUnitsInSale === 0) return;
+
+        sale.sale_products.forEach(sp => {
+          const productId = sp.id_product;
+
+          // Ingreso proporcional de esta venta para este producto (convertido a USD)
+          const proportionalRevenueUSD = ((sp.quantity / totalUnitsInSale) * totalCUP) / rate;
+
+          if (!productStats[productId]) {
+            productStats[productId] = {
+              id_product: productId,
+              name:       sp.product.name,
+              photo_url:  sp.product.photo_url,
+              units_sold: 0,
+              revenue_usd: 0,
+              cost_usd: 0
+            };
+          }
+
+          productStats[productId].units_sold += sp.quantity;
+          productStats[productId].revenue_usd += proportionalRevenueUSD;
+          productStats[productId].cost_usd += Number(sp.product.purchase_price) * sp.quantity;
+        });
+      });
+
+      // 4. Calcular profit, ordenar por unidades vendidas y devolver Top 5
+      const ranking = Object.values(productStats)
+        .map(p => ({
+          id_product: p.id_product,
+          name:       p.name,
+          photo_url:  p.photo_url,
+          units_sold: p.units_sold,
+          revenue_usd: Math.round(p.revenue_usd),
+          profit_usd:  Math.round(p.revenue_usd - p.cost_usd)
+        }))
+        .sort((a, b) => b.units_sold - a.units_sold)
+        .slice(0, 5);
+
+      return ranking;
+    },
+
     // --- DASHBOARD & REPORTS ---
    dashboardStats: async (_, __, { user }) => {
       requireAuth(user);
@@ -290,6 +361,7 @@ export const resolvers = {
       requireAdmin(user);
       return await getAnnualReport();
     },
+
     topSellers: async (_, { period }, { user }) => {
       requireAuth(user);
       return await calculateTopSellers(period);
@@ -766,6 +838,9 @@ export const resolvers = {
     return ret;
   });
 },
+
+
+   
 
     // --- SHIPMENTS ---
     createShipment: (_, args, { user }) => { 

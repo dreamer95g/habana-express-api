@@ -40,6 +40,15 @@ type CatalogData {
  
 }
 
+  type ProductBestSeller {
+    id_product: Int!
+    name: String!
+    photo_url: String
+    units_sold: Int!
+    revenue_usd: Float!
+    profit_usd: Float!
+  }
+
 
   type SystemConfiguration {
     id_config: Int!
@@ -347,6 +356,7 @@ type CatalogData {
     dashboardStats: DashboardStats
     catalogData: CatalogData
     expenses: [Expense]
+    bestSellersYear: [ProductBestSeller]
   }
 
   type Mutation {

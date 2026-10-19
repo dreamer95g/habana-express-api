@@ -213,6 +213,30 @@ export const resolvers = {
   });
 },
 
+salesPaginated: async (_, { limit, offset, search }, { user }) => {
+  // 1. Construir el filtro de búsqueda
+  const where = search ? {
+    OR: [
+      { buyer_phone: { contains: search } },
+      { seller: { name: { contains: search } } }
+    ]
+  } : {};
+
+  // 2. Contar cuántas ventas existen en total con ese filtro
+  const totalCount = await prisma.sales.count({ where });
+
+  // 3. Traer solo las 10 ventas que corresponden a esta página
+  const items = await prisma.sales.findMany({
+    where,
+    skip: offset, // Saltarse las anteriores
+    take: limit,  // Tomar solo 10
+    include: { sale_products: { include: { product: true } }, seller: true },
+    orderBy: { sale_date: 'desc' }
+  });
+
+  return { items, totalCount };
+},
+
  bestSellersYear: async (_, __, { user }) => {
       requireAuth(user);
 

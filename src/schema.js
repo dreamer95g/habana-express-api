@@ -49,6 +49,11 @@ type CatalogData {
     profit_usd: Float!
   }
 
+  type PaginatedSales {
+  items: [Sale]
+  totalCount: Int!
+}
+
 
   type SystemConfiguration {
     id_config: Int!
@@ -357,6 +362,7 @@ type CatalogData {
     catalogData: CatalogData
     expenses: [Expense]
     bestSellersYear: [ProductBestSeller]
+    salesPaginated(limit: Int!, offset: Int!, search: String): PaginatedSales
   }
 
   type Mutation {
